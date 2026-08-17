@@ -1655,8 +1655,9 @@ async function registrarAuditoria(acao, dados) {
       valor_antes:  dados.valor_antes  != null ? String(dados.valor_antes)  : null,
       valor_depois: dados.valor_depois != null ? String(dados.valor_depois) : null,
       detalhes:     dados.detalhes     || null,
+      created_at:   new Date().toISOString(),
     });
-  } catch(e) { /* auditoria nunca bloqueia a operação principal */ }
+  } catch(e) { console.error("Erro auditoria:", e); /* auditoria nunca bloqueia a operação principal */ }
 }
 
 // ── Auditoria — Página ────────────────────────────────────────────────────
