@@ -1427,6 +1427,7 @@ class _Q {
   in(f, vs) { this._ins.push([f, vs]); return this; }
   order(f, o = {}) { this._ord = [f, o.ascending === false ? 'desc' : 'asc']; return this; }
   limit(n)  { this._lim = n; return this; }
+  range(from, to) { this._rangeFrom = from; this._rangeTo = to; return this; }
   single()  { this._single = true; return this; }
   then(ok, fail) { return this._run().then(ok, fail); }
   catch(fn)      { return this._run().catch(fn); }
@@ -1499,7 +1500,11 @@ class _Q {
       }
       // SELECT (query)
       const snap = await this._buildQ().get();
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      let data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      // Suporte a .range(from, to) — simula paginação via slice
+      if (this._rangeFrom != null && this._rangeTo != null) {
+        data = data.slice(this._rangeFrom, this._rangeTo + 1);
+      }
       if (this._single) return { data: data[0] || null, error: null };
       if (this._cnt)    return { data, count: snap.size, error: null };
       return { data, error: null };
