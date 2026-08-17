@@ -2,50 +2,55 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ── Função auxiliar: verifica se o usuário está autenticado
+    // ── Funções auxiliares ────────────────────────────────────────────────────
     function isAuth() {
       return request.auth != null;
     }
 
-    // ── Produtos (precos_compra)
+    // Admin = e-mail com domínio @eualiria.com.br
+    function isAdmin() {
+      return isAuth() && request.auth.token.email.matches('.*@eualiria\\.com\\.br');
+    }
+
+    // ── Produtos (precos_compra) ──────────────────────────────────────────────
     match /precos_compra/{docId} {
       allow read:   if isAuth();
-      allow create: if isAuth();
-      allow update: if isAuth();
-      allow delete: if isAuth();
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();   // somente @eualiria.com.br pode excluir
     }
 
-    // ── Pregões
+    // ── Pregões ───────────────────────────────────────────────────────────────
     match /pregoes/{docId} {
       allow read:   if isAuth();
-      allow create: if isAuth();
-      allow update: if isAuth();
-      allow delete: if isAuth();
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
     }
 
-    // ── Itens de pregão
+    // ── Itens de pregão ───────────────────────────────────────────────────────
     match /pregao_itens/{docId} {
       allow read:   if isAuth();
-      allow create: if isAuth();
-      allow update: if isAuth();
-      allow delete: if isAuth();
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
     }
 
-    // ── Auditoria: qualquer auth pode inserir, mas só lê o próprio
+    // ── Auditoria: inserção por qualquer auth, leitura apenas admin, imutável
     match /auditoria/{docId} {
-      allow read:   if isAuth();
+      allow read:   if isAdmin();
       allow create: if isAuth() && request.auth.uid == request.resource.data.user_id;
       allow update: if false;  // imutável
       allow delete: if false;  // imutável
     }
 
-    // ── Tabela CMED (preços ANVISA)
+    // ── Tabela CMED (preços ANVISA) — leitura livre, escrita só admin ─────────
     match /cmed/{docId} {
-      allow read:   if isAuth();
-      allow write:  if isAuth();
+      allow read:  if isAuth();
+      allow write: if isAdmin();
     }
 
-    // ── Bloqueia qualquer outra coleção
+    // ── Bloqueia qualquer outra coleção ───────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;
     }

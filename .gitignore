@@ -4,3 +4,8 @@
 node_modules/
 .DS_Store
 schema_auditoria.sql
+schema_licitacoes.sql
+schema.sql
+migrar_dados.html
+vendedor.html
+config.js

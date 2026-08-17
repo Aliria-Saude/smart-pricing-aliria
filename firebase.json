@@ -15,7 +15,11 @@
       "*.md",
       "*.xlsx",
       ".github",
-      "node_modules"
+      "node_modules",
+      "migrar_dados.html",
+      "vendedor.html",
+      "config.js",
+      ".gitignore"
     ],
     "rewrites": [
       {
@@ -27,10 +31,12 @@
       {
         "source": "**",
         "headers": [
-          { "key": "X-Frame-Options",        "value": "DENY" },
-          { "key": "X-Content-Type-Options",  "value": "nosniff" },
-          { "key": "Referrer-Policy",          "value": "strict-origin-when-cross-origin" },
-          { "key": "Permissions-Policy",       "value": "geolocation=(), microphone=(), camera=()" }
+          { "key": "X-Frame-Options",           "value": "DENY" },
+          { "key": "X-Content-Type-Options",     "value": "nosniff" },
+          { "key": "Referrer-Policy",            "value": "strict-origin-when-cross-origin" },
+          { "key": "Permissions-Policy",         "value": "geolocation=(), microphone=(), camera=()" },
+          { "key": "Strict-Transport-Security",  "value": "max-age=63072000; includeSubDomains; preload" },
+          { "key": "Content-Security-Policy",    "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; img-src 'self' data: blob:; font-src 'self' data:; frame-ancestors 'none';" }
         ]
       }
     ]

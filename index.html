@@ -1376,7 +1376,7 @@ const _fauth = firebase.auth();
 const _fdb   = firebase.firestore();
 
 // Configura persistência offline
-_fdb.enablePersistence().catch(() => {});
+// enablePersistence removido — evita cache permanente de dados sensíveis no IndexedDB do browser
 
 class _Auth {
   onAuthStateChange(cb) {
@@ -1543,6 +1543,27 @@ const PAGE_SIZE = 50;
 let _p344EANs  = new Set();
 let _currentUser = null; // usuário autenticado atual
 
+// ── Logout automático por inatividade (15 minutos) ──────────────────────────
+let _inactivityTimer = null;
+const INACTIVITY_MS = 15 * 60 * 1000; // 15 minutos
+
+function _resetInactivityTimer() {
+  clearTimeout(_inactivityTimer);
+  _inactivityTimer = setTimeout(async () => {
+    if (_currentUser) {
+      toast("Sessão encerrada por inatividade.", "info");
+      await fazerLogout();
+    }
+  }, INACTIVITY_MS);
+}
+
+function _startInactivityWatch() {
+  ["mousemove","keydown","touchstart","click","scroll"].forEach(ev =>
+    document.addEventListener(ev, _resetInactivityTimer, { passive: true })
+  );
+  _resetInactivityTimer();
+}
+
 async function init() {
   db = _dbAdapter;
 
@@ -1555,6 +1576,7 @@ async function init() {
       document.querySelector(".layout").style.display = "flex";
       if (event === "SIGNED_IN") {
         registrarAuditoria("login", {});
+        _startInactivityWatch();
       }
     } else {
       _currentUser = null;
@@ -1638,6 +1660,15 @@ async function fazerLogin() {
 
 async function fazerLogout() {
   await registrarAuditoria("logout", {});
+  // Limpar todos os dados em memória antes de deslogar (segurança)
+  allData = [];
+  _audData = [];
+  _audFiltered = [];
+  _currentUser = null;
+  // Remover backup do localStorage
+  localStorage.removeItem("smart_pricing_backup");
+  localStorage.removeItem("smart_pricing_backup_ts");
+  sessionStorage.clear();
   await db.auth.signOut();
 }
 
@@ -1742,15 +1773,15 @@ function renderAuditoria() {
     const depois = r.valor_depois != null ? r.valor_depois : "—";
 
     return `<tr>
-      <td style="font-size:12px;white-space:nowrap;color:var(--muted)">${dtStr}</td>
-      <td style="font-size:12px">${r.user_email || "—"}</td>
+      <td style="font-size:12px;white-space:nowrap;color:var(--muted)">${escHtml(dtStr)}</td>
+      <td style="font-size:12px">${escHtml(r.user_email || "—")}</td>
       <td><span style="display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;
-        background:${cor}18;color:${cor};border:1px solid ${cor}44">${lbl}</span></td>
-      <td style="font-size:12px">${r.produto_nome || "—"}</td>
-      <td style="font-size:12px;color:var(--muted)">${r.campo || "—"}</td>
-      <td style="font-size:12px;color:#dc2626">${antes}</td>
-      <td style="font-size:12px;color:#16a34a">${depois}</td>
-      <td style="font-size:11px;color:var(--muted)">${r.detalhes || ""}</td>
+        background:${cor}18;color:${cor};border:1px solid ${cor}44">${escHtml(lbl)}</span></td>
+      <td style="font-size:12px">${escHtml(r.produto_nome || "—")}</td>
+      <td style="font-size:12px;color:var(--muted)">${escHtml(r.campo || "—")}</td>
+      <td style="font-size:12px;color:#dc2626">${escHtml(antes)}</td>
+      <td style="font-size:12px;color:#16a34a">${escHtml(depois)}</td>
+      <td style="font-size:11px;color:var(--muted)">${escHtml(r.detalhes || "")}</td>
     </tr>`;
   }).join("");
 
@@ -1956,7 +1987,7 @@ function updateDashboard() {
       const pct = Math.round(cnt/total*100);
       return `<div class="rank-item">
         <div class="rank-num ${numClass}">${i+1}</div>
-        <div class="rank-name">${name}</div>
+        <div class="rank-name">${escHtml(name)}</div>
         <div class="rank-bar-wrap">
           <div class="rank-bar-bg"><div class="rank-bar-fill" style="width:${pct}%"></div></div>
         </div>
@@ -2025,16 +2056,16 @@ function renderPage() {
     }).join("");
 
     return `<tr>
-      <td style="font-size:11px;color:var(--muted)">${r.ean || "—"}</td>
-      <td class="td-produto">${r.produto || "—"}</td>
-      <td class="td-pa">${r.principio_ativo || "—"}</td>
-      <td>${r.laboratorio || "—"}</td>
-      <td style="font-size:12px">${r.nacionalidade || "—"}</td>
+      <td style="font-size:11px;color:var(--muted)">${escHtml(r.ean || "—")}</td>
+      <td class="td-produto">${escHtml(r.produto || "—")}</td>
+      <td class="td-pa">${escHtml(r.principio_ativo || "—")}</td>
+      <td>${escHtml(r.laboratorio || "—")}</td>
+      <td style="font-size:12px">${escHtml(r.nacionalidade || "—")}</td>
       <td>${trib}</td>
       ${prices}
       <td class="td-price td-best">${r.menor_preco && r.menor_preco > 0 ? fmtBRL(r.menor_preco) : "—"}</td>
       <td class="td-price" style="color:var(--muted);font-size:11px">${fmtPorUnid(r.menor_preco, r.produto)}</td>
-      <td class="td-best">${r.melhor_fornecedor || "—"}</td>
+      <td class="td-best">${escHtml(r.melhor_fornecedor || "—")}</td>
       <td style="text-align:center;font-size:12px;font-weight:${r.portaria_344===true||r.portaria_344==='Sim'?'700':'400'};color:${r.portaria_344===true||r.portaria_344==='Sim'?'#dc2626':'var(--muted)'}">
         <select onchange="salvarPortaria344('${r.id}',this.value)" style="border:none;background:transparent;font-size:12px;font-weight:inherit;color:inherit;cursor:pointer;text-align:center">
           <option value="" ${!r.portaria_344&&r.portaria_344!==false?'selected':''}>—</option>
@@ -4171,7 +4202,7 @@ async function initLicitacoesPage() {
     grid.style.display  = list.length === 0 ? "none" : "";
     renderPregaoCards(list, "licit-grid");
   } catch(e) {
-    grid.innerHTML = `<div style="grid-column:1/-1;color:var(--red);padding:20px">Erro: ${e.message}</div>`;
+    grid.innerHTML = `<div style="grid-column:1/-1;color:var(--red);padding:20px">Erro: ${escHtml(e.message)}</div>`;
   }
 }
 
@@ -4931,7 +4962,7 @@ async function initPregoesPart() {
     grid.style.display  = list.length === 0 ? "none" : "";
     renderPregaoCards(list, "part-grid");
   } catch(e) {
-    grid.innerHTML = `<div style="grid-column:1/-1;color:var(--red);padding:20px">Erro: ${e.message}</div>`;
+    grid.innerHTML = `<div style="grid-column:1/-1;color:var(--red);padding:20px">Erro: ${escHtml(e.message)}</div>`;
   }
 }
 
