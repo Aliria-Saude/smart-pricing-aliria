@@ -1,0 +1,1674 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart Pricing — Aliria Saúde</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --orange:    #F97316;
+  --orange-dk: #EA6B0A;
+  --sidebar:   #1C1C2E;
+  --sidebar-hover: rgba(249,115,22,.12);
+  --bg:        #F4F5F7;
+  --card:      #FFFFFF;
+  --text:      #1A1A2E;
+  --muted:     #6B7280;
+  --border:    #E5E7EB;
+  --shadow:    0 2px 12px rgba(0,0,0,.07);
+  --radius:    12px;
+  --green:     #16A34A;
+  --yellow:    #CA8A04;
+  --red:       #DC2626;
+}
+html, body { height: 100%; font-family: 'Segoe UI', Arial, sans-serif; background: var(--bg); color: var(--text); }
+.layout { display: flex; height: 100vh; overflow: hidden; }
+
+/* Sidebar */
+.sidebar { width: 60px; min-width: 60px; background: var(--sidebar); display: flex; flex-direction: column; overflow: hidden; transition: width .22s ease; position: relative; z-index: 100; }
+.sidebar.expanded { width: 220px; }
+.sidebar:hover:not(.pinned) { width: 220px; }
+.sidebar-logo { display: flex; align-items: center; gap: 12px; padding: 18px 12px 14px; border-bottom: 1px solid rgba(255,255,255,.06); min-height: 64px; position: relative; }
+.logo-icon { width: 36px; height: 36px; border-radius: 50%; background: var(--orange); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px; flex-shrink: 0; }
+.logo-name { color: #fff; font-size: 15px; font-weight: 600; white-space: nowrap; opacity: 0; transition: opacity .15s; }
+.sidebar.expanded .logo-name, .sidebar:hover .logo-name { opacity: 1; }
+.pin-btn { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: rgba(255,255,255,.4); font-size: 16px; padding: 4px; border-radius: 4px; transition: color .15s; display: none; line-height: 1; }
+.pin-btn:hover { color: #fff; }
+.sidebar.expanded .pin-btn, .sidebar:hover .pin-btn { display: block; }
+.sidebar.pinned .pin-btn { color: var(--orange); }
+.nav { flex: 1; padding: 12px 6px; }
+.nav-item { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; cursor: pointer; color: rgba(255,255,255,.65); font-size: 14px; font-weight: 500; transition: all .15s; user-select: none; margin-bottom: 2px; white-space: nowrap; }
+.nav-item:hover { background: var(--sidebar-hover); color: #fff; }
+.nav-item.active { background: var(--orange); color: #fff; }
+.nav-item svg { width: 18px; height: 18px; flex-shrink: 0; }
+.nav-item span { opacity: 0; transition: opacity .15s; }
+.sidebar.expanded .nav-item span, .sidebar:hover .nav-item span { opacity: 1; }
+.sidebar-footer { padding: 12px 6px 14px; border-top: 1px solid rgba(255,255,255,.06); }
+.user-block { display: flex; align-items: center; gap: 10px; padding: 8px 6px; border-radius: 8px; cursor: pointer; transition: background .15s; white-space: nowrap; overflow: hidden; }
+.user-block:hover { background: var(--sidebar-hover); }
+.user-avatar { width: 34px; height: 34px; border-radius: 50%; background: var(--orange); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; flex-shrink: 0; }
+.user-info { opacity: 0; transition: opacity .15s; }
+.sidebar.expanded .user-info, .sidebar:hover .user-info { opacity: 1; }
+.user-name { color: #fff; font-size: 13px; font-weight: 600; }
+.user-role { color: rgba(255,255,255,.5); font-size: 11px; }
+.db-status { display: flex; align-items: center; gap: 6px; padding: 0 8px 6px; font-size: 11px; color: rgba(255,255,255,.45); white-space: nowrap; overflow: hidden; }
+.db-status span { opacity: 0; transition: opacity .15s; }
+.sidebar.expanded .db-status span, .sidebar:hover .db-status span { opacity: 1; }
+.db-dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; flex-shrink: 0; }
+.db-dot.red { background: #ef4444; }
+
+/* Main */
+.main { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+.topbar { background: var(--orange); padding: 20px 32px 22px; display: flex; justify-content: space-between; align-items: center; }
+.topbar h1 { color: #fff; font-size: 22px; font-weight: 700; }
+.topbar p  { color: rgba(255,255,255,.8); font-size: 13px; margin-top: 3px; }
+.topbar-logo { color: rgba(255,255,255,.6); font-size: 18px; font-weight: 700; letter-spacing: 1px; }
+.content { padding: 28px 32px; flex: 1; }
+
+/* Cards */
+.card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 24px; }
+.sec-hd { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.sec-hd h2 { font-size: 16px; font-weight: 700; color: var(--text); }
+
+/* Buttons */
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: all .15s; }
+.btn-primary { background: var(--orange); color: #fff; }
+.btn-primary:hover { background: var(--orange-dk); }
+.btn-secondary { background: var(--bg); color: var(--text); border: 1px solid var(--border); }
+.btn-secondary:hover { background: var(--border); }
+.btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+.btn-ghost:hover { background: var(--bg); color: var(--text); }
+.btn-sm { padding: 6px 14px; font-size: 12px; }
+
+/* Table */
+.table-wrap { overflow-x: auto; border-radius: 8px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 1100px; }
+thead th { background: #F9FAFB; padding: 11px 14px; text-align: left; font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: #FAFAFA; }
+tbody td { padding: 10px 14px; color: var(--text); white-space: nowrap; }
+.td-produto { white-space: normal; min-width: 220px; font-weight: 500; }
+.td-pa { white-space: normal; min-width: 160px; font-size: 12px; color: var(--muted); }
+.td-best { color: var(--green); font-weight: 700; }
+.td-price { font-variant-numeric: tabular-nums; }
+.td-regime { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 600; }
+.regime-isento    { background: #D1FAE5; color: #065F46; }
+.regime-tributado { background: #FEF3C7; color: #92400E; }
+
+/* Filters */
+.filters { display: flex; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+.filter-input { padding: 9px 14px; border-radius: 8px; border: 1px solid var(--border); font-size: 13px; color: var(--text); background: var(--card); outline: none; transition: border .15s; }
+.filter-input:focus { border-color: var(--orange); }
+.filter-input[type=text] { flex: 1; min-width: 200px; }
+select.filter-input { min-width: 160px; }
+
+/* Simulation */
+.sim-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.sim-label { font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .4px; }
+.sim-input { width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border); font-size: 14px; color: var(--text); background: var(--card); outline: none; transition: border .15s; font-family: inherit; }
+.sim-input:focus { border-color: var(--orange); }
+.sim-select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236B7280' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; cursor: pointer; }
+.sim-field { margin-bottom: 18px; }
+.auto-tag { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 99px; background: #EFF6FF; color: #1D4ED8; font-size: 11px; font-weight: 600; }
+.result-card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 24px; margin-top: 24px; }
+.result-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+.result-row:last-child { border-bottom: none; }
+.result-row.total { font-weight: 700; font-size: 15px; padding-top: 14px; }
+.result-row .lbl { color: var(--muted); }
+.result-row .val { font-variant-numeric: tabular-nums; }
+.val-cost   { color: var(--red); }
+.val-rev    { color: var(--text); font-weight: 600; }
+.val-margin { font-weight: 700; }
+.farol { display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px; border-radius: 99px; font-size: 15px; font-weight: 700; margin-top: 16px; }
+.farol-green  { background: #D1FAE5; color: #065F46; }
+.farol-yellow { background: #FDE68A; color: #78350F; }
+.farol-red    { background: #FEE2E2; color: #991B1B; }
+
+/* Orc tabs */
+.orc-tab { padding: 9px 22px; border-radius: 8px; border: 1px solid var(--border); background: var(--card); font-size: 13px; font-weight: 600; cursor: pointer; color: var(--muted); transition: all .15s; }
+.orc-tab:hover { border-color: var(--orange); color: var(--orange); }
+.orc-tab.active { background: var(--orange); color: #fff; border-color: var(--orange); }
+
+/* Toast */
+#toast { position: fixed; bottom: 28px; right: 28px; z-index: 9999; background: #1C1C2E; color: #fff; padding: 14px 22px; border-radius: 10px; font-size: 14px; font-weight: 500; box-shadow: 0 8px 24px rgba(0,0,0,.2); display: none; align-items: center; gap: 10px; max-width: 380px; }
+#toast.show { display: flex; }
+#toast.success { background: #065F46; }
+#toast.error   { background: #991B1B; }
+
+/* Pagination */
+.pagination { display: flex; align-items: center; justify-content: space-between; padding-top: 16px; font-size: 13px; color: var(--muted); }
+.pagination .pages { display: flex; gap: 4px; }
+.pg-btn { width: 32px; height: 32px; border-radius: 6px; border: 1px solid var(--border); background: var(--card); cursor: pointer; font-size: 13px; font-weight: 500; display: flex; align-items: center; justify-content: center; transition: all .15s; }
+.pg-btn:hover { border-color: var(--orange); color: var(--orange); }
+.pg-btn.active { background: var(--orange); color: #fff; border-color: var(--orange); }
+
+/* Pages */
+.page { display: none; }
+.page.active { display: block; }
+.empty { text-align: center; padding: 60px 20px; color: var(--muted); }
+.empty-icon { font-size: 48px; margin-bottom: 12px; }
+.empty h3 { font-size: 16px; font-weight: 600; margin-bottom: 6px; color: var(--text); }
+.empty p  { font-size: 13px; }
+</style>
+</head>
+<body>
+
+<div class="layout">
+
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">A</div>
+      <div class="logo-name">Smart Pricing</div>
+      <button class="pin-btn" onclick="togglePin()" title="Fixar menu">📌</button>
+    </div>
+
+    <nav class="nav">
+      <div class="nav-item active" onclick="goto('precos')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/>
+          <line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/>
+        </svg>
+        <span>Preços de Compra</span>
+      </div>
+      <div class="nav-item" onclick="goto('cadastro')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+        </svg>
+        <span>Cadastro</span>
+      </div>
+      <div class="nav-item" onclick="goto('simulacao')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+        </svg>
+        <span>Simulação</span>
+      </div>
+      <div class="nav-item" onclick="goto('contrib')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+        </svg>
+        <span>Sim. Contribuinte</span>
+      </div>
+      <div class="nav-item" onclick="goto('orcamento')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+        </svg>
+        <span>Orçamento</span>
+      </div>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="db-status">
+        <div class="db-dot" id="db-dot"></div>
+        <span id="db-label">Conectando...</span>
+      </div>
+      <div class="user-block">
+        <div class="user-avatar">A</div>
+        <div class="user-info">
+          <div class="user-name">Aliria Saúde</div>
+          <div class="user-role">Smart Pricing</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+
+    <div class="topbar" id="topbar">
+      <div>
+        <h1 id="topbar-title">Preços de Compra</h1>
+        <p id="topbar-sub">Base consolidada por fornecedor</p>
+      </div>
+      <div class="topbar-logo">Aliria</div>
+    </div>
+
+    <div class="content">
+
+      <!-- PREÇOS DE COMPRA -->
+      <div id="page-precos" class="page active">
+        <div class="filters">
+          <input type="text" class="filter-input" id="f-busca" placeholder="🔍  Buscar produto, princípio ativo, laboratório..." oninput="renderTable()">
+          <select class="filter-input sim-select" id="f-forn" onchange="renderTable()">
+            <option value="">Todos os fornecedores</option>
+            <option>INTEGRALMED</option><option>VIVEO</option><option>CIAMED</option>
+            <option>PL</option><option>SANTA CRUZ</option><option>SANTA RITA</option><option>GAM</option>
+            <option>PONTUAL</option><option>AGILLE</option><option>UNIMED</option>
+            <option>MEDLIVE</option><option>ONCO</option>
+          </select>
+          <select class="filter-input sim-select" id="f-trib" onchange="renderTable()">
+            <option value="">Todas as tributações</option>
+            <option>ISENTO</option><option>TRIBUTADO</option>
+          </select>
+          <select class="filter-input sim-select" id="f-nac" onchange="renderTable()">
+            <option value="">Nacional / Importado</option>
+            <option>NACIONAL</option><option>IMPORTADO</option>
+          </select>
+          <button class="btn btn-ghost btn-sm" onclick="exportCSV()">⬇ Exportar CSV</button>
+        </div>
+
+        <div class="card">
+          <div class="sec-hd">
+            <h2 id="table-count">Carregando...</h2>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>EAN</th>
+                  <th>Produto</th>
+                  <th>Princípio Ativo</th>
+                  <th>Laboratório</th>
+                  <th>Nacion.</th>
+                  <th>Tributação</th>
+                  <th>INTEGRALMED</th><th>VIVEO</th><th>CIAMED</th>
+                  <th>PL</th><th>SANTA CRUZ</th><th>SANTA RITA</th><th>GAM</th>
+                  <th>PONTUAL</th><th>AGILLE</th><th>UNIMED</th>
+                  <th>MEDLIVE</th><th>ONCO</th>
+                  <th>Menor Preço</th><th>Preço/Unid</th><th>Melhor Fornecedor</th>
+                </tr>
+              </thead>
+              <tbody id="tbody"></tbody>
+            </table>
+          </div>
+          <div class="pagination">
+            <span id="pag-info"></span>
+            <div class="pages" id="pag-pages"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CADASTRO -->
+      <div id="page-cadastro" class="page">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;max-width:900px">
+
+          <div class="card">
+            <h2 style="margin-bottom:20px;font-size:15px">Novo Item</h2>
+
+            <div class="sim-field">
+              <div class="sim-label">EAN</div>
+              <input class="sim-input" type="text" id="cad-ean" placeholder="Código de barras"
+                onblur="buscarPorEan()" onkeydown="if(event.key==='Enter'||event.key==='Tab'){buscarPorEan()}">
+            </div>
+
+            <!-- Banner: produto já cadastrado -->
+            <div id="cad-banner" style="display:none;align-items:center;gap:10px;background:#dcfce7;border:1px solid #86efac;border-radius:8px;padding:10px 14px;margin-bottom:10px">
+              <span style="font-size:18px">✅</span>
+              <div>
+                <div style="font-size:13px;font-weight:600;color:#15803d" id="cad-banner-nome"></div>
+                <div style="font-size:12px;color:#166534">Produto já cadastrado — campos preenchidos. Edite os preços e clique em <strong>Atualizar</strong>.</div>
+              </div>
+              <button onclick="limparCadastro()" title="Limpar formulário"
+                style="margin-left:auto;background:none;border:none;cursor:pointer;font-size:18px;color:#15803d;line-height:1">✕</button>
+            </div>
+
+            <!-- Banner: encontrado na CMED -->
+            <div id="cad-banner-cmed" style="display:none;align-items:center;gap:10px;background:#eff6ff;border:1px solid #93c5fd;border-radius:8px;padding:10px 14px;margin-bottom:10px">
+              <span style="font-size:18px">🔍</span>
+              <div>
+                <div style="font-size:13px;font-weight:600;color:#1d4ed8" id="cad-banner-cmed-nome"></div>
+                <div style="font-size:12px;color:#1e40af">Produto encontrado na CMED — Produto, Princípio Ativo e Laboratório preenchidos. Complete <strong>Nacionalidade</strong>, <strong>Tributação</strong> e os <strong>Preços</strong>.</div>
+              </div>
+              <button onclick="limparCadastro()" title="Limpar formulário"
+                style="margin-left:auto;background:none;border:none;cursor:pointer;font-size:18px;color:#1d4ed8;line-height:1">✕</button>
+            </div>
+
+            <!-- Spinner CMED -->
+            <div id="cad-buscando" style="display:none;align-items:center;gap:8px;font-size:13px;color:var(--muted);margin-bottom:10px">
+              <span style="animation:spin 1s linear infinite;display:inline-block">⏳</span> Buscando na CMED...
+            </div>
+
+            <div class="sim-field">
+              <div class="sim-label">Item</div>
+              <input class="sim-input" type="text" id="cad-item" placeholder="Nome do medicamento">
+            </div>
+            <div class="sim-field">
+              <div class="sim-label">Apresentação</div>
+              <input class="sim-input" type="text" id="cad-apres" placeholder="Ex: 500mg c/120cp">
+            </div>
+            <div class="sim-field">
+              <div class="sim-label">Princípio Ativo</div>
+              <input class="sim-input" type="text" id="cad-pa" placeholder="Em minúsculas automaticamente">
+            </div>
+            <div class="sim-field">
+              <div class="sim-label">Laboratório</div>
+              <input class="sim-input" type="text" id="cad-lab" placeholder="Ex: ROCHE">
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+              <div class="sim-field">
+                <div class="sim-label">Nacionalidade</div>
+                <select class="sim-input sim-select" id="cad-nac">
+                  <option value="">Selecione...</option>
+                  <option>NACIONAL</option><option>IMPORTADO</option>
+                </select>
+              </div>
+              <div class="sim-field">
+                <div class="sim-label">Tributação</div>
+                <select class="sim-input sim-select" id="cad-trib">
+                  <option value="">Selecione...</option>
+                  <option>ISENTO</option><option>TRIBUTADO</option>
+                </select>
+              </div>
+            </div>
+            <button class="btn btn-primary" style="width:100%;margin-top:8px" id="cad-btn-salvar" onclick="salvarCadastro()">
+              ＋ Salvar Item
+            </button>
+          </div>
+
+          <div class="card">
+            <h2 style="margin-bottom:20px;font-size:15px">Preços por Fornecedor <span style="font-size:12px;font-weight:400;color:var(--muted)">(opcional)</span></h2>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+              <div class="sim-field"><div class="sim-label">INTEGRALMED</div><input class="sim-input" type="number" id="cad-integralmed" placeholder="R$" min="0" step="0.01"></div>
+              <div class="sim-field"><div class="sim-label">VIVEO</div><input class="sim-input" type="number" id="cad-viveo" placeholder="R$" min="0" step="0.01"></div>
+              <div class="sim-field"><div class="sim-label">CIAMED</div><input class="sim-input" type="number" id="cad-ciamed" placeholder="R$" min="0" step="0.01"></div>
+              <div class="sim-field"><div class="sim-label">PL</div><input class="sim-input" type="number" id="cad-pl" placeholder="R$" min="0" step="0.01"></div>
+              <div class="sim-field"><div class="sim-label">SANTA CRUZ</div><input class="sim-input" type="number" id="cad-santa_cruz" placeholder="R$" min="0" step="0.01"></div>
+              <div class="sim-field"><div class="sim-label">SANTA RITA</div><input class="sim-input" type="number" id="cad-santa_rita" placeholder="R$" min="0" step="0.01"></div>
+              <div class="sim-field"><div class="sim-label">GAM</div><input class="sim-input" type="number" id="cad-gam" placeholder="R$" min="0" step="0.01"></div>
+              <div class="sim-field"><div class="sim-label">PONTUAL</div><input class="sim-input" type="number" id="cad-pontual" placeholder="R$" min="0" step="0.01"></div>
+              <div class="sim-field"><div class="sim-label">AGILLE</div><input class="sim-input" type="number" id="cad-agille" placeholder="R$" min="0" step="0.01"></div>
+              <div class="sim-field"><div class="sim-label">UNIMED</div><input class="sim-input" type="number" id="cad-unimed" placeholder="R$" min="0" step="0.01"></div>
+              <div class="sim-field"><div class="sim-label">MEDLIVE</div><input class="sim-input" type="number" id="cad-medlive" placeholder="R$" min="0" step="0.01"></div>
+              <div class="sim-field"><div class="sim-label">ONCO</div><input class="sim-input" type="number" id="cad-onco" placeholder="R$" min="0" step="0.01"></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- SIMULAÇÃO -->
+      <div id="page-simulacao" class="page">
+        <div class="sim-grid">
+          <div>
+            <div class="card">
+              <h2 style="margin-bottom:20px;font-size:15px">Dados do Produto</h2>
+
+              <div class="sim-field">
+                <div class="sim-label">Produto</div>
+                <select class="sim-input sim-select" id="sim-produto" onchange="onProdutoChange()">
+                  <option value="">Selecione o produto...</option>
+                </select>
+              </div>
+
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+                <div class="sim-field">
+                  <div class="sim-label">Tributação <span class="auto-tag">auto</span></div>
+                  <input class="sim-input" id="sim-trib" readonly>
+                </div>
+                <div class="sim-field">
+                  <div class="sim-label">Nacionalidade <span class="auto-tag">auto</span></div>
+                  <input class="sim-input" id="sim-nacion" readonly>
+                </div>
+                <div class="sim-field">
+                  <div class="sim-label">Laboratório <span class="auto-tag">auto</span></div>
+                  <input class="sim-input" id="sim-lab" readonly>
+                </div>
+                <div class="sim-field">
+                  <div class="sim-label">Preço de Compra <span class="auto-tag">auto</span></div>
+                  <input class="sim-input" id="sim-pc" readonly>
+                </div>
+              </div>
+
+              <div class="sim-field" style="margin-top:4px">
+                <div class="sim-label">Melhor Fornecedor <span class="auto-tag">auto</span></div>
+                <input class="sim-input" id="sim-forn-best" readonly style="color:var(--green);font-weight:700">
+              </div>
+            </div>
+
+            <div class="card" style="margin-top:20px">
+              <h2 style="margin-bottom:20px;font-size:15px">Parâmetros de Venda</h2>
+
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+                <div class="sim-field">
+                  <div class="sim-label">Estado de Origem</div>
+                  <select class="sim-input sim-select" id="sim-origem" onchange="calcular()">
+                    <option value="SC">SC — Santa Catarina</option>
+                    <option value="SP">SP — São Paulo</option>
+                  </select>
+                </div>
+                <div class="sim-field">
+                  <div class="sim-label">Estado de Destino</div>
+                  <select class="sim-input sim-select" id="sim-estado" onchange="calcular()">
+                    <option value="SC">SC — Santa Catarina</option>
+                    <option value="AC">AC — Acre</option><option value="AL">AL — Alagoas</option>
+                    <option value="AM">AM — Amazonas</option><option value="AP">AP — Amapá</option>
+                    <option value="BA">BA — Bahia</option><option value="CE">CE — Ceará</option>
+                    <option value="DF">DF — Distrito Federal</option><option value="ES">ES — Espírito Santo</option>
+                    <option value="GO">GO — Goiás</option><option value="MA">MA — Maranhão</option>
+                    <option value="MG">MG — Minas Gerais</option><option value="MS">MS — Mato Grosso do Sul</option>
+                    <option value="MT">MT — Mato Grosso</option><option value="PA">PA — Pará</option>
+                    <option value="PB">PB — Paraíba</option><option value="PE">PE — Pernambuco</option>
+                    <option value="PI">PI — Piauí</option><option value="PR">PR — Paraná</option>
+                    <option value="RJ">RJ — Rio de Janeiro</option><option value="RN">RN — Rio Grande do Norte</option>
+                    <option value="RO">RO — Rondônia</option><option value="RR">RR — Roraima</option>
+                    <option value="RS">RS — Rio Grande do Sul</option><option value="SE">SE — Sergipe</option>
+                    <option value="SP">SP — São Paulo</option><option value="TO">TO — Tocantins</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="sim-field">
+                <div class="sim-label">Preço de Venda (R$)</div>
+                <input class="sim-input" type="number" id="sim-pv" min="0" step="10"
+                       placeholder="0,00" oninput="calcular()">
+              </div>
+
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+                <div class="sim-field">
+                  <div class="sim-label">Modalidade Pagamento</div>
+                  <select class="sim-input sim-select" id="sim-modal" onchange="onModalChange()">
+                    <option value="PIX">PIX / BOLETO</option>
+                    <option value="CARTÃO">CARTÃO</option>
+                  </select>
+                </div>
+                <div class="sim-field" id="field-parcelas" style="display:none">
+                  <div class="sim-label">Parcelas</div>
+                  <select class="sim-input sim-select" id="sim-parcelas" onchange="calcular()">
+                    <option value="1">1x — 2,50%</option>
+                    <option value="2">2x — 3,77%</option>
+                    <option value="3">3x — 5,04%</option>
+                    <option value="4">4x — 6,33%</option>
+                    <option value="5">5x — 7,62%</option>
+                    <option value="6">6x — 8,93%</option>
+                    <option value="7">7x — 10,25%</option>
+                    <option value="8">8x — 11,57%</option>
+                    <option value="9">9x — 12,91%</option>
+                    <option value="10">10x — 14,26%</option>
+                    <option value="11">11x — 15,62%</option>
+                    <option value="12">12x — 16,98%</option>
+                  </select>
+                </div>
+                <div class="sim-field">
+                  <div class="sim-label">Comissão (%)</div>
+                  <input class="sim-input" type="number" id="sim-cr" min="0" max="100" step="0.1"
+                         placeholder="0" oninput="calcular()">
+                </div>
+                <div class="sim-field">
+                  <div class="sim-label">Frete (R$)</div>
+                  <input class="sim-input" type="number" id="sim-frete-m" min="0" step="5"
+                         placeholder="0,00" oninput="calcular()">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Resultado -->
+          <div>
+            <div class="card" id="result-area">
+              <div class="empty">
+                <div class="empty-icon">🧮</div>
+                <h3>Resultado aparece aqui</h3>
+                <p>Selecione um produto e informe o preço de venda</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SIMULAÇÃO CONTRIBUINTE -->
+      <div id="page-contrib" class="page">
+        <div style="background:#EFF6FF;border:1px solid #93C5FD;border-radius:10px;padding:12px 18px;margin-bottom:20px;font-size:13px;color:#1E40AF">
+          ℹ️ <strong>Venda a contribuinte do ICMS:</strong> o comprador recolhe o ICMS no próprio estado — sem DIFAL para o vendedor. O cálculo considera apenas ICMS próprio da NF (alíquota interestadual) + IR/CSLL + MDR + Comissão + Frete.
+        </div>
+        <div class="sim-grid">
+          <div>
+            <div class="card">
+              <h2 style="margin-bottom:20px;font-size:15px">Dados do Produto</h2>
+
+              <div class="sim-field">
+                <div class="sim-label">Produto</div>
+                <select class="sim-input sim-select" id="c-produto" onchange="onProdutoChangeC()">
+                  <option value="">Selecione o produto...</option>
+                </select>
+              </div>
+
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+                <div class="sim-field">
+                  <div class="sim-label">Tributação <span class="auto-tag">auto</span></div>
+                  <input class="sim-input" id="c-trib" readonly>
+                </div>
+                <div class="sim-field">
+                  <div class="sim-label">Nacionalidade <span class="auto-tag">auto</span></div>
+                  <input class="sim-input" id="c-nacion" readonly>
+                </div>
+                <div class="sim-field">
+                  <div class="sim-label">Laboratório <span class="auto-tag">auto</span></div>
+                  <input class="sim-input" id="c-lab" readonly>
+                </div>
+                <div class="sim-field">
+                  <div class="sim-label">Preço de Compra <span class="auto-tag">auto</span></div>
+                  <input class="sim-input" id="c-pc" readonly>
+                </div>
+              </div>
+
+              <div class="sim-field" style="margin-top:4px">
+                <div class="sim-label">Melhor Fornecedor <span class="auto-tag">auto</span></div>
+                <input class="sim-input" id="c-forn-best" readonly style="color:var(--green);font-weight:700">
+              </div>
+            </div>
+
+            <div class="card" style="margin-top:20px">
+              <h2 style="margin-bottom:20px;font-size:15px">Parâmetros de Venda</h2>
+
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+                <div class="sim-field">
+                  <div class="sim-label">Estado de Origem</div>
+                  <select class="sim-input sim-select" id="c-origem" onchange="calcularC()">
+                    <option value="SC">SC — Santa Catarina</option>
+                    <option value="SP">SP — São Paulo</option>
+                  </select>
+                </div>
+                <div class="sim-field">
+                  <div class="sim-label">Estado de Destino</div>
+                  <select class="sim-input sim-select" id="c-estado" onchange="calcularC()">
+                    <option value="SC">SC — Santa Catarina</option>
+                    <option value="AC">AC — Acre</option><option value="AL">AL — Alagoas</option>
+                    <option value="AM">AM — Amazonas</option><option value="AP">AP — Amapá</option>
+                    <option value="BA">BA — Bahia</option><option value="CE">CE — Ceará</option>
+                    <option value="DF">DF — Distrito Federal</option><option value="ES">ES — Espírito Santo</option>
+                    <option value="GO">GO — Goiás</option><option value="MA">MA — Maranhão</option>
+                    <option value="MG">MG — Minas Gerais</option><option value="MS">MS — Mato Grosso do Sul</option>
+                    <option value="MT">MT — Mato Grosso</option><option value="PA">PA — Pará</option>
+                    <option value="PB">PB — Paraíba</option><option value="PE">PE — Pernambuco</option>
+                    <option value="PI">PI — Piauí</option><option value="PR">PR — Paraná</option>
+                    <option value="RJ">RJ — Rio de Janeiro</option><option value="RN">RN — Rio Grande do Norte</option>
+                    <option value="RO">RO — Rondônia</option><option value="RR">RR — Roraima</option>
+                    <option value="RS">RS — Rio Grande do Sul</option><option value="SE">SE — Sergipe</option>
+                    <option value="SP">SP — São Paulo</option><option value="TO">TO — Tocantins</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="sim-field">
+                <div class="sim-label">Preço de Venda (R$)</div>
+                <input class="sim-input" type="number" id="c-pv" min="0" step="10"
+                       placeholder="0,00" oninput="calcularC()">
+              </div>
+
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+                <div class="sim-field">
+                  <div class="sim-label">Modalidade Pagamento</div>
+                  <select class="sim-input sim-select" id="c-modal" onchange="onModalChangeC()">
+                    <option value="PIX">PIX / BOLETO</option>
+                    <option value="CARTÃO">CARTÃO</option>
+                  </select>
+                </div>
+                <div class="sim-field" id="c-field-parcelas" style="display:none">
+                  <div class="sim-label">Parcelas</div>
+                  <select class="sim-input sim-select" id="c-parcelas" onchange="calcularC()">
+                    <option value="1">1x — 2,50%</option>
+                    <option value="2">2x — 3,77%</option>
+                    <option value="3">3x — 5,04%</option>
+                    <option value="4">4x — 6,33%</option>
+                    <option value="5">5x — 7,62%</option>
+                    <option value="6">6x — 8,93%</option>
+                    <option value="7">7x — 10,25%</option>
+                    <option value="8">8x — 11,57%</option>
+                    <option value="9">9x — 12,91%</option>
+                    <option value="10">10x — 14,26%</option>
+                    <option value="11">11x — 15,62%</option>
+                    <option value="12">12x — 16,98%</option>
+                  </select>
+                </div>
+                <div class="sim-field">
+                  <div class="sim-label">Comissão (%)</div>
+                  <input class="sim-input" type="number" id="c-cr" min="0" max="100" step="0.1"
+                         placeholder="0" oninput="calcularC()">
+                </div>
+                <div class="sim-field">
+                  <div class="sim-label">Frete (R$)</div>
+                  <input class="sim-input" type="number" id="c-frete-m" min="0" step="5"
+                         placeholder="0,00" oninput="calcularC()">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Resultado -->
+          <div>
+            <div class="card" id="c-result-area">
+              <div class="empty">
+                <div class="empty-icon">🧮</div>
+                <h3>Resultado aparece aqui</h3>
+                <p>Selecione um produto e informe o preço de venda</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ORÇAMENTO -->
+      <div id="page-orcamento" class="page">
+        <div style="max-width:920px">
+
+          <!-- Sub-tabs -->
+          <div style="display:flex;gap:8px;margin-bottom:20px">
+            <button class="orc-tab active" id="orctab-contrib"   onclick="switchOrcTab('contrib')">🏢 Contribuinte</button>
+            <button class="orc-tab"        id="orctab-ncontrib"  onclick="switchOrcTab('ncontrib')">🏪 Não Contribuinte</button>
+          </div>
+
+          <!-- ── PAINEL CONTRIBUINTE (sem DIFAL) ── -->
+          <div id="orc-panel-contrib">
+            <div style="background:#EFF6FF;border:1px solid #93C5FD;border-radius:10px;padding:10px 16px;margin-bottom:16px;font-size:12px;color:#1E40AF">
+              ℹ️ <strong>Contribuinte:</strong> ICMS recolhido pelo comprador no destino — sem DIFAL para o vendedor.
+            </div>
+
+            <div class="card" style="margin-bottom:16px">
+              <h2 style="font-size:15px;margin-bottom:16px">Dados da Empresa</h2>
+              <div style="display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:14px">
+                <div class="sim-field">
+                  <div class="sim-label">Razão Social</div>
+                  <input class="sim-input" id="oc-razao" placeholder="Nome da empresa / cliente" autocomplete="off">
+                </div>
+                <div class="sim-field">
+                  <div class="sim-label">CNPJ</div>
+                  <input class="sim-input" id="oc-cnpj" placeholder="00.000.000/0000-00">
+                </div>
+              </div>
+              <div class="sim-field" style="margin-bottom:14px">
+                <div class="sim-label">Endereço completo</div>
+                <input class="sim-input" id="oc-end" placeholder="Rua, nº, bairro, cidade/UF — CEP">
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
+                <div class="sim-field">
+                  <div class="sim-label">Validade do orçamento</div>
+                  <input class="sim-input" type="date" id="oc-validade">
+                </div>
+                <div class="sim-field">
+                  <div class="sim-label">Estado de Destino</div>
+                  <select class="sim-input sim-select" id="oc-estado" onchange="calcOrcTotal('oc',false)">
+                    <option value="SC">SC — Santa Catarina</option>
+                    <option value="AC">AC — Acre</option><option value="AL">AL — Alagoas</option>
+                    <option value="AM">AM — Amazonas</option><option value="AP">AP — Amapá</option>
+                    <option value="BA">BA — Bahia</option><option value="CE">CE — Ceará</option>
+                    <option value="DF">DF — Distrito Federal</option><option value="ES">ES — Espírito Santo</option>
+                    <option value="GO">GO — Goiás</option><option value="MA">MA — Maranhão</option>
+                    <option value="MG">MG — Minas Gerais</option><option value="MS">MS — Mato Grosso do Sul</option>
+                    <option value="MT">MT — Mato Grosso</option><option value="PA">PA — Pará</option>
+                    <option value="PB">PB — Paraíba</option><option value="PE">PE — Pernambuco</option>
+                    <option value="PI">PI — Piauí</option><option value="PR">PR — Paraná</option>
+                    <option value="RJ">RJ — Rio de Janeiro</option><option value="RN">RN — Rio Grande do Norte</option>
+                    <option value="RO">RO — Rondônia</option><option value="RR">RR — Roraima</option>
+                    <option value="RS">RS — Rio Grande do Sul</option><option value="SE">SE — Sergipe</option>
+                    <option value="SP">SP — São Paulo</option><option value="TO">TO — Tocantins</option>
+                  </select>
+                </div>
+                <div class="sim-field">
+                  <div class="sim-label">Modalidade</div>
+                  <select class="sim-input sim-select" id="oc-modal" onchange="calcOrcTotal('oc',false)">
+                    <option value="PIX">PIX / Boleto</option>
+                    <option value="CARTÃO">Cartão 1x (2,50%)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div class="card" style="margin-bottom:16px;overflow-x:auto">
+              <h2 style="font-size:15px;margin-bottom:16px">Itens do Orçamento</h2>
+              <table style="width:100%;border-collapse:collapse;min-width:680px">
+                <thead>
+                  <tr style="background:var(--bg)">
+                    <th style="width:28px;padding:7px 6px;text-align:center;font-size:11px;color:var(--muted);font-weight:600;border-bottom:2px solid var(--border)">#</th>
+                    <th style="padding:7px 8px;text-align:left;font-size:11px;color:var(--muted);font-weight:600;border-bottom:2px solid var(--border)">Produto</th>
+                    <th style="width:155px;padding:7px 8px;text-align:right;font-size:11px;color:var(--muted);font-weight:600;border-bottom:2px solid var(--border)">Valor Venda (R$)</th>
+                    <th style="width:68px;padding:7px 8px;text-align:center;font-size:11px;color:var(--muted);font-weight:600;border-bottom:2px solid var(--border)">Qtd</th>
+                    <th style="width:130px;padding:7px 8px;text-align:right;font-size:11px;color:var(--muted);font-weight:600;border-bottom:2px solid var(--border)">Total</th>
+                    <th style="width:110px;padding:7px 8px;text-align:center;font-size:11px;color:var(--muted);font-weight:600;border-bottom:2px solid var(--border)">Margem</th>
+                  </tr>
+                </thead>
+                <tbody id="oc-tbody"></tbody>
+                <tfoot>
+                  <tr>
+                    <td colspan="4" style="padding:12px 8px;text-align:right;font-weight:700;font-size:13px;border-top:2px solid var(--border);color:var(--muted)">VALOR TOTAL DO ORÇAMENTO</td>
+                    <td style="padding:12px 8px;text-align:right;font-weight:700;font-size:15px;color:var(--orange);border-top:2px solid var(--border);white-space:nowrap" id="oc-grand-total">R$ 0,00</td>
+                    <td style="padding:12px 8px;text-align:center;border-top:2px solid var(--border)" id="oc-total-margem"></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+
+          <!-- ── PAINEL NÃO CONTRIBUINTE (com DIFAL) ── -->
+          <div id="orc-panel-ncontrib" style="display:none">
+            <div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:10px;padding:10px 16px;margin-bottom:16px;font-size:12px;color:#92400E">
+              ℹ️ <strong>Não Contribuinte:</strong> vendedor recolhe o DIFAL (diferencial de alíquota) ao estado de destino.
+            </div>
+
+            <div class="card" style="margin-bottom:16px">
+              <h2 style="font-size:15px;margin-bottom:16px">Dados da Empresa</h2>
+              <div style="display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:14px">
+                <div class="sim-field">
+                  <div class="sim-label">Razão Social</div>
+                  <input class="sim-input" id="on-razao" placeholder="Nome da empresa / cliente" autocomplete="off">
+                </div>
+                <div class="sim-field">
+                  <div class="sim-label">CNPJ</div>
+                  <input class="sim-input" id="on-cnpj" placeholder="00.000.000/0000-00">
+                </div>
+              </div>
+              <div class="sim-field" style="margin-bottom:14px">
+                <div class="sim-label">Endereço completo</div>
+                <input class="sim-input" id="on-end" placeholder="Rua, nº, bairro, cidade/UF — CEP">
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
+                <div class="sim-field">
+                  <div class="sim-label">Validade do orçamento</div>
+                  <input class="sim-input" type="date" id="on-validade">
+                </div>
+                <div class="sim-field">
+                  <div class="sim-label">Estado de Destino</div>
+                  <select class="sim-input sim-select" id="on-estado" onchange="calcOrcTotal('on',true)">
+                    <option value="SC">SC — Santa Catarina</option>
+                    <option value="AC">AC — Acre</option><option value="AL">AL — Alagoas</option>
+                    <option value="AM">AM — Amazonas</option><option value="AP">AP — Amapá</option>
+                    <option value="BA">BA — Bahia</option><option value="CE">CE — Ceará</option>
+                    <option value="DF">DF — Distrito Federal</option><option value="ES">ES — Espírito Santo</option>
+                    <option value="GO">GO — Goiás</option><option value="MA">MA — Maranhão</option>
+                    <option value="MG">MG — Minas Gerais</option><option value="MS">MS — Mato Grosso do Sul</option>
+                    <option value="MT">MT — Mato Grosso</option><option value="PA">PA — Pará</option>
+                    <option value="PB">PB — Paraíba</option><option value="PE">PE — Pernambuco</option>
+                    <option value="PI">PI — Piauí</option><option value="PR">PR — Paraná</option>
+                    <option value="RJ">RJ — Rio de Janeiro</option><option value="RN">RN — Rio Grande do Norte</option>
+                    <option value="RO">RO — Rondônia</option><option value="RR">RR — Roraima</option>
+                    <option value="RS">RS — Rio Grande do Sul</option><option value="SE">SE — Sergipe</option>
+                    <option value="SP">SP — São Paulo</option><option value="TO">TO — Tocantins</option>
+                  </select>
+                </div>
+                <div class="sim-field">
+                  <div class="sim-label">Modalidade</div>
+                  <select class="sim-input sim-select" id="on-modal" onchange="calcOrcTotal('on',true)">
+                    <option value="PIX">PIX / Boleto</option>
+                    <option value="CARTÃO">Cartão 1x (2,50%)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div class="card" style="margin-bottom:16px;overflow-x:auto">
+              <h2 style="font-size:15px;margin-bottom:16px">Itens do Orçamento</h2>
+              <table style="width:100%;border-collapse:collapse;min-width:680px">
+                <thead>
+                  <tr style="background:var(--bg)">
+                    <th style="width:28px;padding:7px 6px;text-align:center;font-size:11px;color:var(--muted);font-weight:600;border-bottom:2px solid var(--border)">#</th>
+                    <th style="padding:7px 8px;text-align:left;font-size:11px;color:var(--muted);font-weight:600;border-bottom:2px solid var(--border)">Produto</th>
+                    <th style="width:155px;padding:7px 8px;text-align:right;font-size:11px;color:var(--muted);font-weight:600;border-bottom:2px solid var(--border)">Valor Venda (R$)</th>
+                    <th style="width:68px;padding:7px 8px;text-align:center;font-size:11px;color:var(--muted);font-weight:600;border-bottom:2px solid var(--border)">Qtd</th>
+                    <th style="width:130px;padding:7px 8px;text-align:right;font-size:11px;color:var(--muted);font-weight:600;border-bottom:2px solid var(--border)">Total</th>
+                    <th style="width:110px;padding:7px 8px;text-align:center;font-size:11px;color:var(--muted);font-weight:600;border-bottom:2px solid var(--border)">Margem</th>
+                  </tr>
+                </thead>
+                <tbody id="on-tbody"></tbody>
+                <tfoot>
+                  <tr>
+                    <td colspan="4" style="padding:12px 8px;text-align:right;font-weight:700;font-size:13px;border-top:2px solid var(--border);color:var(--muted)">VALOR TOTAL DO ORÇAMENTO</td>
+                    <td style="padding:12px 8px;text-align:right;font-weight:700;font-size:15px;color:var(--orange);border-top:2px solid var(--border);white-space:nowrap" id="on-grand-total">R$ 0,00</td>
+                    <td style="padding:12px 8px;text-align:center;border-top:2px solid var(--border)" id="on-total-margem"></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </div><!-- /content -->
+  </main>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const SUPABASE_URL  = "https://fmivqhsfkvfunznrlxde.supabase.co";
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZtaXZxaHNma3ZmdW56bnJseGRlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3Mzg4MDIsImV4cCI6MjA4OTMxNDgwMn0.ktJjaqdqXgcJbepqFXIkcsovQR_DoTVN30lZr7pG2o0";
+</script>
+<script>
+const DIST = ["INTEGRALMED","VIVEO","CIAMED","PL","SANTA CRUZ","SANTA RITA",
+              "GAM","PONTUAL","AGILLE","UNIMED","MEDLIVE","ONCO"];
+
+const ICMS = {
+  AC:.19, AL:.19, AM:.20, AP:.18, BA:.205, CE:.20, DF:.17, ES:.17,
+  GO:.19, MA:.23, MG:.18, MS:.17, MT:.17, PA:.19, PB:.20, PE:.205,
+  PI:.225, PR:.195, RJ:.22, RN:.20, RO:.195, RR:.20, RS:.17,
+  SC:.17, SE:.19, SP:.18, TO:.20
+};
+
+const PAGES = {
+  precos:    { title: "Preços de Compra",       sub: "Base consolidada por fornecedor" },
+  cadastro:  { title: "Cadastro",               sub: "Inclua itens manualmente no sistema" },
+  simulacao: { title: "Simulação",              sub: "Calcule a margem pelo preço de venda" },
+  contrib:    { title: "Simulação Contribuinte", sub: "Margem para venda a contribuinte — sem recolhimento de DIFAL" },
+  orcamento:  { title: "Orçamento",             sub: "Monte orçamentos para empresas com análise de margem" },
+};
+
+let db = null;
+let allData = [];
+let filtered = [];
+let currentPage = 1;
+const PAGE_SIZE = 50;
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+async function init() {
+  try {
+    db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+    const { error } = await db.from("precos_compra").select("id", { count: "exact", head: true });
+    if (error) throw error;
+    setDbStatus(true);
+  } catch(e) {
+    setDbStatus(false);
+    toast("Erro ao conectar ao Supabase: " + e.message, "error");
+  }
+  await loadData();
+}
+
+function setDbStatus(ok) {
+  document.getElementById("db-dot").className = "db-dot" + (ok ? "" : " red");
+  document.getElementById("db-label").textContent = ok ? "Supabase conectado" : "Sem conexão";
+}
+
+// ── Navigation ───────────────────────────────────────────────────────────────
+function goto(page) {
+  document.querySelectorAll(".nav-item").forEach(el => {
+    el.classList.remove("active");
+    if (el.getAttribute("onclick")?.includes(`'${page}'`)) el.classList.add("active");
+  });
+  document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+  document.getElementById("page-" + page).classList.add("active");
+  const info = PAGES[page];
+  document.getElementById("topbar-title").textContent = info.title;
+  document.getElementById("topbar-sub").textContent = info.sub;
+  if (page === "orcamento") initOrcPage();
+}
+
+// ── Data ─────────────────────────────────────────────────────────────────────
+async function loadData() {
+  if (!db) return;
+  try {
+    let allRows = [];
+    let from = 0;
+    const step = 1000;
+    while (true) {
+      const { data, error } = await db
+        .from("precos_compra")
+        .select("*")
+        .order("produto", { ascending: true })
+        .range(from, from + step - 1);
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+      allRows = allRows.concat(data);
+      if (data.length < step) break;
+      from += step;
+    }
+
+    allData = allRows;
+    filtered = [...allData];
+    renderTable();
+    populateSimDropdown();
+    populateSimContribDropdown();
+    if (document.getElementById("oc-prod-1")) { populateOrcProdutos("oc"); populateOrcProdutos("on"); }
+  } catch(e) {
+    toast("Erro ao carregar dados: " + e.message, "error");
+  }
+}
+
+// ── Table ────────────────────────────────────────────────────────────────────
+function renderTable() {
+  const busca = document.getElementById("f-busca").value.toLowerCase();
+  const forn  = document.getElementById("f-forn").value;
+  const trib  = document.getElementById("f-trib").value;
+  const nac   = document.getElementById("f-nac").value;
+
+  filtered = allData.filter(r => {
+    if (busca && !`${r.produto} ${r.laboratorio} ${r.principio_ativo}`.toLowerCase().includes(busca)) return false;
+    if (forn && !(r.melhor_fornecedor === forn || (r[forn.toLowerCase().replace(/ /g,"_")] > 0))) return false;
+    if (trib && !r.tributacao?.toUpperCase().includes(trib)) return false;
+    if (nac  && !r.nacionalidade?.toUpperCase().includes(nac)) return false;
+    return true;
+  });
+
+  currentPage = 1;
+  renderPage();
+}
+
+function renderPage() {
+  const start = (currentPage - 1) * PAGE_SIZE;
+  const rows  = filtered.slice(start, start + PAGE_SIZE);
+  const tbody = document.getElementById("tbody");
+
+  document.getElementById("table-count").textContent =
+    `${filtered.length} produto${filtered.length !== 1 ? "s" : ""} encontrado${filtered.length !== 1 ? "s" : ""}`;
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="21" style="text-align:center;padding:40px;color:var(--muted)">Nenhum produto encontrado</td></tr>`;
+    document.getElementById("pag-info").textContent = "";
+    document.getElementById("pag-pages").innerHTML = "";
+    return;
+  }
+
+  tbody.innerHTML = rows.map(r => {
+    const trib = r.tributacao?.toUpperCase().includes("ISENTO")
+      ? `<span class="td-regime regime-isento">ISENTO</span>`
+      : `<span class="td-regime regime-tributado">TRIBUTADO</span>`;
+
+    const prices = DIST.map(d => {
+      const key = d.toLowerCase().replace(/ /g,"_");
+      const v = r[key];
+      return `<td class="td-price">${v && v > 0 ? fmtBRL(v) : "—"}</td>`;
+    }).join("");
+
+    return `<tr>
+      <td style="font-size:11px;color:var(--muted)">${r.ean || "—"}</td>
+      <td class="td-produto">${r.produto || "—"}</td>
+      <td class="td-pa">${r.principio_ativo || "—"}</td>
+      <td>${r.laboratorio || "—"}</td>
+      <td style="font-size:12px">${r.nacionalidade || "—"}</td>
+      <td>${trib}</td>
+      ${prices}
+      <td class="td-price td-best">${r.menor_preco && r.menor_preco > 0 ? fmtBRL(r.menor_preco) : "—"}</td>
+      <td class="td-price" style="color:var(--muted);font-size:11px">${fmtPorUnid(r.menor_preco, r.produto)}</td>
+      <td class="td-best">${r.melhor_fornecedor || "—"}</td>
+    </tr>`;
+  }).join("");
+
+  const total = Math.ceil(filtered.length / PAGE_SIZE);
+  document.getElementById("pag-info").textContent =
+    `Mostrando ${start + 1}–${Math.min(start + PAGE_SIZE, filtered.length)} de ${filtered.length}`;
+
+  const pages = document.getElementById("pag-pages");
+  pages.innerHTML = "";
+  for (let i = 1; i <= Math.min(total, 7); i++) {
+    const btn = document.createElement("button");
+    btn.className = "pg-btn" + (i === currentPage ? " active" : "");
+    btn.textContent = i;
+    btn.onclick = () => { currentPage = i; renderPage(); };
+    pages.appendChild(btn);
+  }
+}
+
+// ── ICMS Interestadual ────────────────────────────────────────────────────────
+const SUL_SUDESTE = ["RS","SC","PR","SP","MG","RJ"];
+
+function getAliqInter(origem, destino, importado) {
+  if (origem === destino) return ICMS[destino] || 0.17;
+  if (importado) return 0.04;
+  if (SUL_SUDESTE.includes(origem) && SUL_SUDESTE.includes(destino)) return 0.12;
+  return 0.07;
+}
+
+// ── Simulation ────────────────────────────────────────────────────────────────
+function populateSimDropdown() {
+  const sel = document.getElementById("sim-produto");
+  sel.innerHTML = '<option value="">Selecione o produto...</option>';
+  [...allData].sort((a,b) => (a.produto||"").localeCompare(b.produto||"")).forEach(r => {
+    const opt = document.createElement("option");
+    opt.value = r.id;
+    opt.textContent = r.produto || r.id;
+    sel.appendChild(opt);
+  });
+}
+
+function onProdutoChange() {
+  const id = document.getElementById("sim-produto").value;
+  const row = allData.find(r => r.id === id);
+  if (!row) {
+    ["sim-trib","sim-nacion","sim-lab","sim-pc","sim-forn-best"].forEach(x => {
+      document.getElementById(x).value = "";
+    });
+    document.getElementById("result-area").innerHTML = `
+      <div class="empty"><div class="empty-icon">🧮</div>
+      <h3>Resultado aparece aqui</h3><p>Selecione um produto e informe o preço de venda</p></div>`;
+    return;
+  }
+  document.getElementById("sim-trib").value      = row.tributacao     || "";
+  document.getElementById("sim-nacion").value    = row.nacionalidade  || "";
+  document.getElementById("sim-lab").value       = row.laboratorio    || "";
+  document.getElementById("sim-pc").value        = row.menor_preco ? fmtBRL(row.menor_preco) : "—";
+  document.getElementById("sim-forn-best").value = row.melhor_fornecedor || "—";
+  calcular();
+}
+
+function calcular() {
+  const id  = document.getElementById("sim-produto").value;
+  const row = allData.find(r => r.id === id);
+  const pv  = parseFloat(document.getElementById("sim-pv").value) || 0;
+
+  if (!row || pv <= 0) {
+    document.getElementById("result-area").innerHTML = `
+      <div class="empty"><div class="empty-icon">🧮</div>
+      <h3>Resultado aparece aqui</h3><p>Selecione um produto e informe o preço de venda</p></div>`;
+    return;
+  }
+
+  const pc          = parseFloat(row.menor_preco) || 0;
+  const trib        = (row.tributacao || "").toUpperCase();
+  const nac         = (row.nacionalidade || "").toUpperCase();
+  const estado      = document.getElementById("sim-estado").value;
+  const origem      = document.getElementById("sim-origem").value;
+  const modalidade  = document.getElementById("sim-modal").value;
+  const parcela     = parseInt(document.getElementById("sim-parcelas").value) || 1;
+  const comissaoPct = (parseFloat(document.getElementById("sim-cr").value) || 0) / 100;
+  const freteM      = parseFloat(document.getElementById("sim-frete-m").value) || 0;
+  const isIsento    = trib.includes("ISENTO");
+  const isImport    = nac.includes("IMPORTADO");
+
+  let custoMerc;
+  if (isIsento) {
+    custoMerc = pc;
+  } else {
+    const cred = nac.includes("NACIONAL") ? 0.12 : 0.04;
+    custoMerc = pc * (1 - cred);
+  }
+
+  const aliqInter = isIsento ? 0 : getAliqInter(origem, estado, isImport);
+  const icmsNF    = pv * aliqInter;
+  const aliqDest  = ICMS[estado] || 0.17;
+  const icmsDest  = isIsento ? 0 : pv * aliqDest;
+  const difal     = isIsento ? 0 : Math.max(0, icmsDest - icmsNF);
+
+  const MDR_RATES = [0,0.025,0.0377,0.0504,0.0633,0.0762,0.0893,0.1025,0.1157,0.1291,0.1426,0.1562,0.1698];
+  const mdrRate  = modalidade === "CARTÃO" ? (MDR_RATES[parcela] || 0.025) : 0;
+  const irCsll   = pv * 0.033;
+  const mdr      = pv * mdrRate;
+  const comissao = pv * comissaoPct;
+  const frete    = freteM > 0 ? freteM : 0;
+
+  const totalCustos = custoMerc + icmsNF + difal + irCsll + mdr + comissao + frete;
+  const margemR   = pv - totalCustos;
+  const margemPct = pv > 0 ? margemR / pv : 0;
+  const markup    = pc > 0 ? (pv / pc - 1) : 0;
+
+  let farolClass, farolIcon, farolText;
+  if (margemPct > 0.05) {
+    farolClass = "farol-green";  farolIcon = "✔"; farolText = "APROVADO";
+  } else if (margemPct > 0.02) {
+    farolClass = "farol-yellow"; farolIcon = "⚠"; farolText = "ATENÇÃO";
+  } else {
+    farolClass = "farol-red";    farolIcon = "✘"; farolText = "REPROVADO";
+  }
+
+  function resultRow(label, val, valClass) {
+    return `<div class="result-row">
+      <span class="lbl">${label}</span>
+      <span class="val ${valClass}">${val}</span>
+    </div>`;
+  }
+
+  document.getElementById("result-area").innerHTML = `
+    <h2 style="margin-bottom:20px;font-size:15px">Resultado</h2>
+    <div class="farol ${farolClass}">${farolIcon} ${farolText} — Margem: ${fmtPct(margemPct)}</div>
+    <div style="font-size:11px;color:var(--muted);margin-top:6px">▲5% Aprovado &nbsp;|&nbsp; 2%–5% Atenção &nbsp;|&nbsp; ≤2% Reprovado</div>
+
+    <div style="margin-top:24px">
+      ${resultRow("Preço de Venda", fmtBRL(pv), "val-rev")}
+      ${resultRow("(-) Custo Mercadoria", fmtBRL(custoMerc), "val-cost")}
+      ${isIsento ? "" : resultRow(`(-) ICMS Próprio NF — ${origem}→${estado} (${fmtPct(aliqInter)})`, fmtBRL(icmsNF), "val-cost")}
+      ${isIsento ? "" : `<div class="result-row" style="opacity:.6">
+        <span class="lbl">ℹ ICMS Destino ${estado} (${fmtPct(aliqDest)}) — apenas referência</span>
+        <span class="val">${fmtBRL(icmsDest)}</span></div>`}
+      ${isIsento || difal <= 0 ? "" : resultRow(`(-) DIFAL (${fmtPct(aliqDest - aliqInter)})`, fmtBRL(difal), "val-cost")}
+      ${resultRow("(-) IR / CSLL (3,3%)", fmtBRL(irCsll), "val-cost")}
+      ${modalidade === "CARTÃO" ? resultRow(`(-) MDR Cartão ${parcela}x (${fmtPct(mdrRate)})`, fmtBRL(mdr), "val-cost") : ""}
+      ${comissaoPct > 0 ? resultRow(`(-) Comissão (${fmtPct(comissaoPct)})`, fmtBRL(comissao), "val-cost") : ""}
+      ${frete > 0 ? resultRow("(-) Frete", fmtBRL(frete), "val-cost") : ""}
+    </div>
+
+    <div class="result-row total">
+      <span class="lbl">Margem Líquida</span>
+      <span class="val val-margin" style="color:${margemR >= 0 ? 'var(--green)' : 'var(--red)'}">
+        ${fmtBRL(margemR)} (${fmtPct(margemPct)})
+      </span>
+    </div>
+
+    <div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--border)">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div style="background:var(--bg);border-radius:10px;padding:20px;text-align:center">
+          <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Preço de Compra</div>
+          <div style="font-size:26px;font-weight:800;color:var(--text)">${fmtBRL(pc)}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px">${row.melhor_fornecedor || "—"}</div>
+        </div>
+        <div style="background:${margemR >= 0 ? '#f0fdf4' : '#fef2f2'};border:2px solid ${margemR >= 0 ? '#86efac' : '#fca5a5'};border-radius:10px;padding:20px;text-align:center">
+          <div style="font-size:11px;color:${margemR >= 0 ? '#15803d' : '#dc2626'};font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Margem Líquida</div>
+          <div style="font-size:26px;font-weight:800;color:${margemR >= 0 ? '#15803d' : '#dc2626'}">${fmtBRL(margemR)}</div>
+          <div style="font-size:12px;color:${margemR >= 0 ? '#16a34a' : '#ef4444'};margin-top:4px;font-weight:600">${fmtPct(margemPct)} sobre PV</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;font-size:13px;color:var(--muted)">
+      <span>Markup s/ preço de compra: <strong style="color:var(--text)">${fmtPct(markup)}</strong></span>
+    </div>`;
+}
+
+function onModalChange() {
+  const isCartao = document.getElementById("sim-modal").value === "CARTÃO";
+  document.getElementById("field-parcelas").style.display = isCartao ? "" : "none";
+  calcular();
+}
+
+// ── Export ────────────────────────────────────────────────────────────────────
+function exportCSV() {
+  const headers = ["EAN","Produto","Princípio Ativo","Laboratório","Nacionalidade","Tributação",
+    ...DIST,"Menor Preço","Melhor Fornecedor"];
+  const distKeys = ["integralmed","viveo","ciamed","pl","santa_cruz","santa_rita",
+                    "gam","pontual","agille","unimed","medlive","onco"];
+  const rows = [headers, ...filtered.map(r => [
+    r.ean||"", r.produto||"", r.principio_ativo||"", r.laboratorio||"",
+    r.nacionalidade||"", r.tributacao||"",
+    ...distKeys.map(k => r[k]||""),
+    r.menor_preco||"", r.melhor_fornecedor||"",
+  ])];
+  const csv = rows.map(r => r.map(v => `"${String(v||"").replace(/"/g,'""')}"`).join(";")).join("\n");
+  const a = document.createElement("a");
+  a.href = "data:text/csv;charset=utf-8,﻿" + encodeURIComponent(csv);
+  a.download = `precos_compra_${new Date().toISOString().split("T")[0]}.csv`;
+  a.click();
+}
+
+// ── Cadastro ──────────────────────────────────────────────────────────────────
+const DIST_KEYS_CAD    = ["integralmed","viveo","ciamed","pl","santa_cruz","santa_rita",
+                          "gam","pontual","agille","unimed","medlive","onco"];
+const DIST_LABELS_CAD  = ["INTEGRALMED","VIVEO","CIAMED","PL","SANTA CRUZ","SANTA RITA",
+                          "GAM","PONTUAL","AGILLE","UNIMED","MEDLIVE","ONCO"];
+
+let cadEanExistente = null;
+
+function ocultarBannersCad() {
+  document.getElementById("cad-banner").style.display      = "none";
+  document.getElementById("cad-banner-cmed").style.display = "none";
+  document.getElementById("cad-buscando").style.display    = "none";
+}
+
+async function buscarPorEan() {
+  const ean   = document.getElementById("cad-ean").value.trim();
+  const input = document.getElementById("cad-ean");
+  if (!ean) { cadEanExistente = null; ocultarBannersCad(); input.style.borderColor = ""; return; }
+
+  // 1. Busca no cadastro existente
+  const found = allData.find(r => String(r.ean) === ean);
+  if (found) {
+    cadEanExistente = found;
+    input.style.borderColor = "#16a34a";
+    document.getElementById("cad-item").value  = found.produto || "";
+    document.getElementById("cad-apres").value = "";
+    document.getElementById("cad-pa").value    = found.principio_ativo || "";
+    document.getElementById("cad-lab").value   = found.laboratorio     || "";
+    document.getElementById("cad-nac").value   = found.nacionalidade   || "";
+    document.getElementById("cad-trib").value  = found.tributacao      || "";
+    DIST_KEYS_CAD.forEach(k => {
+      const el = document.getElementById("cad-" + k);
+      const v  = found[k];
+      if (el) el.value = (v != null && v > 0) ? v : "";
+    });
+    ocultarBannersCad();
+    document.getElementById("cad-banner-nome").textContent = found.produto || "";
+    document.getElementById("cad-banner").style.display = "flex";
+    document.getElementById("cad-btn-salvar").innerHTML = "💾 Atualizar Preços";
+    document.getElementById("cad-integralmed").focus();
+    return;
+  }
+
+  // 2. Não está no cadastro — tenta CMED
+  cadEanExistente = null;
+  input.style.borderColor = "";
+  ocultarBannersCad();
+  if (!db) return;
+
+  document.getElementById("cad-buscando").style.display = "flex";
+  try {
+    const { data: cmedRows } = await db
+      .from("cmed")
+      .select("ean1,ean2,ean3,produto,substancia,laboratorio,apresentacao")
+      .or(`ean1.eq.${ean},ean2.eq.${ean},ean3.eq.${ean}`)
+      .limit(1);
+    document.getElementById("cad-buscando").style.display = "none";
+    const cmed = cmedRows && cmedRows.length > 0 ? cmedRows[0] : null;
+    if (cmed) {
+      input.style.borderColor = "#3b82f6";
+      const apres   = cmed.apresentacao ? cmed.apresentacao.trim() : "";
+      const produto = cmed.produto ? (apres ? `${cmed.produto.trim()} ${apres}` : cmed.produto.trim()) : "";
+      document.getElementById("cad-item").value  = produto;
+      document.getElementById("cad-apres").value = "";
+      document.getElementById("cad-pa").value    = cmed.substancia  ? cmed.substancia.trim().toLowerCase() : "";
+      document.getElementById("cad-lab").value   = cmed.laboratorio ? cmed.laboratorio.trim() : "";
+      document.getElementById("cad-nac").value   = "";
+      document.getElementById("cad-trib").value  = "";
+      DIST_KEYS_CAD.forEach(k => { const el = document.getElementById("cad-" + k); if (el) el.value = ""; });
+      document.getElementById("cad-banner-cmed-nome").textContent = produto;
+      document.getElementById("cad-banner-cmed").style.display = "flex";
+      document.getElementById("cad-btn-salvar").innerHTML = "＋ Salvar Item";
+      document.getElementById("cad-nac").focus();
+    }
+  } catch(e) {
+    document.getElementById("cad-buscando").style.display = "none";
+  }
+}
+
+function limparCadastro() {
+  cadEanExistente = null;
+  ocultarBannersCad();
+  document.getElementById("cad-ean").style.borderColor = "";
+  document.getElementById("cad-btn-salvar").innerHTML  = "＋ Salvar Item";
+  ["cad-ean","cad-item","cad-apres","cad-pa","cad-lab"].forEach(id => document.getElementById(id).value = "");
+  document.getElementById("cad-nac").value  = "";
+  document.getElementById("cad-trib").value = "";
+  DIST_KEYS_CAD.forEach(k => { const el = document.getElementById("cad-" + k); if (el) el.value = ""; });
+}
+
+async function salvarCadastro() {
+  const item  = document.getElementById("cad-item").value.trim();
+  const apres = document.getElementById("cad-apres").value.trim();
+  if (!item) { toast("Informe o nome do item", "error"); return; }
+
+  const produto = apres ? `${item} ${apres}` : item;
+  const pa      = document.getElementById("cad-pa").value.trim().toLowerCase();
+  const ean     = document.getElementById("cad-ean").value.trim() || null;
+
+  const prices = {};
+  let menor = null, melhor = null;
+  DIST_KEYS_CAD.forEach((k, i) => {
+    const v = parseFloat(document.getElementById("cad-" + k).value) || null;
+    prices[k] = v && v > 0 ? v : null;
+    if (prices[k] && (menor === null || prices[k] < menor)) {
+      menor = prices[k]; melhor = DIST_LABELS_CAD[i];
+    }
+  });
+
+  const record = {
+    produto,
+    principio_ativo: pa || null,
+    laboratorio:   document.getElementById("cad-lab").value.trim() || null,
+    nacionalidade: document.getElementById("cad-nac").value || null,
+    tributacao:    document.getElementById("cad-trib").value || null,
+    ...prices,
+    menor_preco: menor, melhor_fornecedor: melhor,
+    data_cotacao: new Date().toISOString().split("T")[0],
+    updated_at:   new Date().toISOString(),
+  };
+
+  if (cadEanExistente) {
+    const { error } = await db.from("precos_compra").update(record).eq("id", cadEanExistente.id);
+    if (error) { toast("Erro ao atualizar: " + error.message, "error"); return; }
+    toast(`✅ ${produto} atualizado com sucesso!`, "success");
+    limparCadastro();
+    await loadData();
+    return;
+  }
+
+  if (ean) record.ean = ean;
+  const { error } = await db.from("precos_compra").insert(record);
+  if (error) { toast("Erro ao salvar: " + error.message, "error"); return; }
+  toast(`✅ ${produto} cadastrado com sucesso!`, "success");
+  limparCadastro();
+  await loadData();
+}
+
+// ── Simulação Contribuinte (sem DIFAL) ───────────────────────────────────────
+function populateSimContribDropdown() {
+  const sel = document.getElementById("c-produto");
+  sel.innerHTML = '<option value="">Selecione o produto...</option>';
+  [...allData].sort((a,b) => (a.produto||"").localeCompare(b.produto||"")).forEach(r => {
+    const opt = document.createElement("option");
+    opt.value = r.id;
+    opt.textContent = r.produto || r.id;
+    sel.appendChild(opt);
+  });
+}
+
+function onProdutoChangeC() {
+  const id  = document.getElementById("c-produto").value;
+  const row = allData.find(r => r.id === id);
+  if (!row) {
+    ["c-trib","c-nacion","c-lab","c-pc","c-forn-best"].forEach(x => {
+      document.getElementById(x).value = "";
+    });
+    document.getElementById("c-result-area").innerHTML = `
+      <div class="empty"><div class="empty-icon">🧮</div>
+      <h3>Resultado aparece aqui</h3><p>Selecione um produto e informe o preço de venda</p></div>`;
+    return;
+  }
+  document.getElementById("c-trib").value      = row.tributacao     || "";
+  document.getElementById("c-nacion").value    = row.nacionalidade  || "";
+  document.getElementById("c-lab").value       = row.laboratorio    || "";
+  document.getElementById("c-pc").value        = row.menor_preco ? fmtBRL(row.menor_preco) : "—";
+  document.getElementById("c-forn-best").value = row.melhor_fornecedor || "—";
+  calcularC();
+}
+
+function calcularC() {
+  const id  = document.getElementById("c-produto").value;
+  const row = allData.find(r => r.id === id);
+  const pv  = parseFloat(document.getElementById("c-pv").value) || 0;
+
+  if (!row || pv <= 0) {
+    document.getElementById("c-result-area").innerHTML = `
+      <div class="empty"><div class="empty-icon">🧮</div>
+      <h3>Resultado aparece aqui</h3><p>Selecione um produto e informe o preço de venda</p></div>`;
+    return;
+  }
+
+  const pc          = parseFloat(row.menor_preco) || 0;
+  const trib        = (row.tributacao    || "").toUpperCase();
+  const nac         = (row.nacionalidade || "").toUpperCase();
+  const estado      = document.getElementById("c-estado").value;
+  const origem      = document.getElementById("c-origem").value;
+  const modalidade  = document.getElementById("c-modal").value;
+  const parcela     = parseInt(document.getElementById("c-parcelas").value) || 1;
+  const comissaoPct = (parseFloat(document.getElementById("c-cr").value) || 0) / 100;
+  const freteM      = parseFloat(document.getElementById("c-frete-m").value) || 0;
+  const isIsento    = trib.includes("ISENTO");
+  const isImport    = nac.includes("IMPORTADO");
+
+  // Custo mercadoria (crédito ICMS entrada)
+  let custoMerc;
+  if (isIsento) {
+    custoMerc = pc;
+  } else {
+    const cred = nac.includes("NACIONAL") ? 0.12 : 0.04;
+    custoMerc = pc * (1 - cred);
+  }
+
+  // ICMS próprio da NF (alíquota interestadual) — sem DIFAL
+  const aliqInter = isIsento ? 0 : getAliqInter(origem, estado, isImport);
+  const icmsNF    = pv * aliqInter;
+  // ICMS destino exibido apenas como referência informativa
+  const aliqDest  = ICMS[estado] || 0.17;
+  const icmsDest  = isIsento ? 0 : pv * aliqDest;
+
+  // Demais custos
+  const MDR_RATES = [0,0.025,0.0377,0.0504,0.0633,0.0762,0.0893,0.1025,0.1157,0.1291,0.1426,0.1562,0.1698];
+  const mdrRate  = modalidade === "CARTÃO" ? (MDR_RATES[parcela] || 0.025) : 0;
+  const irCsll   = pv * 0.033;
+  const mdr      = pv * mdrRate;
+  const comissao = pv * comissaoPct;
+  const frete    = freteM > 0 ? freteM : 0;
+
+  // Total SEM DIFAL
+  const totalCustos = custoMerc + icmsNF + irCsll + mdr + comissao + frete;
+  const margemR   = pv - totalCustos;
+  const margemPct = pv > 0 ? margemR / pv : 0;
+  const markup    = pc > 0 ? (pv / pc - 1) : 0;
+
+  let farolClass, farolIcon, farolText;
+  if (margemPct > 0.05) {
+    farolClass = "farol-green";  farolIcon = "✔"; farolText = "APROVADO";
+  } else if (margemPct > 0.02) {
+    farolClass = "farol-yellow"; farolIcon = "⚠"; farolText = "ATENÇÃO";
+  } else {
+    farolClass = "farol-red";    farolIcon = "✘"; farolText = "REPROVADO";
+  }
+
+  function resultRow(label, val, valClass) {
+    return `<div class="result-row">
+      <span class="lbl">${label}</span>
+      <span class="val ${valClass}">${val}</span>
+    </div>`;
+  }
+
+  document.getElementById("c-result-area").innerHTML = `
+    <h2 style="margin-bottom:20px;font-size:15px">Resultado — Contribuinte</h2>
+    <div class="farol ${farolClass}">${farolIcon} ${farolText} — Margem: ${fmtPct(margemPct)}</div>
+    <div style="font-size:11px;color:var(--muted);margin-top:6px">▲5% Aprovado &nbsp;|&nbsp; 2%–5% Atenção &nbsp;|&nbsp; ≤2% Reprovado</div>
+
+    <div style="margin-top:24px">
+      ${resultRow("Preço de Venda", fmtBRL(pv), "val-rev")}
+      ${resultRow("(-) Custo Mercadoria", fmtBRL(custoMerc), "val-cost")}
+      ${isIsento ? "" : resultRow(`(-) ICMS Próprio NF — ${origem}→${estado} (${fmtPct(aliqInter)})`, fmtBRL(icmsNF), "val-cost")}
+      ${isIsento ? "" : `<div class="result-row" style="opacity:.5">
+        <span class="lbl">ℹ ICMS Destino ${estado} (${fmtPct(aliqDest)}) — recolhido pelo comprador</span>
+        <span class="val">${fmtBRL(icmsDest)}</span></div>`}
+      ${resultRow("(-) IR / CSLL (3,3%)", fmtBRL(irCsll), "val-cost")}
+      ${modalidade === "CARTÃO" ? resultRow(`(-) MDR Cartão ${parcela}x (${fmtPct(mdrRate)})`, fmtBRL(mdr), "val-cost") : ""}
+      ${comissaoPct > 0 ? resultRow(`(-) Comissão (${fmtPct(comissaoPct)})`, fmtBRL(comissao), "val-cost") : ""}
+      ${frete > 0 ? resultRow("(-) Frete", fmtBRL(frete), "val-cost") : ""}
+    </div>
+
+    <div class="result-row total">
+      <span class="lbl">Margem Líquida</span>
+      <span class="val val-margin" style="color:${margemR >= 0 ? 'var(--green)' : 'var(--red)'}">
+        ${fmtBRL(margemR)} (${fmtPct(margemPct)})
+      </span>
+    </div>
+
+    <div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--border)">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div style="background:var(--bg);border-radius:10px;padding:20px;text-align:center">
+          <div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Preço de Compra</div>
+          <div style="font-size:26px;font-weight:800;color:var(--text)">${fmtBRL(pc)}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px">${row.melhor_fornecedor || "—"}</div>
+        </div>
+        <div style="background:${margemR >= 0 ? '#f0fdf4' : '#fef2f2'};border:2px solid ${margemR >= 0 ? '#86efac' : '#fca5a5'};border-radius:10px;padding:20px;text-align:center">
+          <div style="font-size:11px;color:${margemR >= 0 ? '#15803d' : '#dc2626'};font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Margem Líquida</div>
+          <div style="font-size:26px;font-weight:800;color:${margemR >= 0 ? '#15803d' : '#dc2626'}">${fmtBRL(margemR)}</div>
+          <div style="font-size:12px;color:${margemR >= 0 ? '#16a34a' : '#ef4444'};margin-top:4px;font-weight:600">${fmtPct(margemPct)} sobre PV</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;font-size:13px;color:var(--muted)">
+      <span>Markup s/ preço de compra: <strong style="color:var(--text)">${fmtPct(markup)}</strong></span>
+    </div>`;
+}
+
+function onModalChangeC() {
+  const isCartao = document.getElementById("c-modal").value === "CARTÃO";
+  document.getElementById("c-field-parcelas").style.display = isCartao ? "" : "none";
+  calcularC();
+}
+
+// ── Orçamento ─────────────────────────────────────────────────────────────────
+const ORC_ROWS = 8;
+
+function switchOrcTab(tab) {
+  document.getElementById("orc-panel-contrib").style.display  = tab === "contrib"  ? "" : "none";
+  document.getElementById("orc-panel-ncontrib").style.display = tab === "ncontrib" ? "" : "none";
+  document.getElementById("orctab-contrib").classList.toggle("active",  tab === "contrib");
+  document.getElementById("orctab-ncontrib").classList.toggle("active", tab === "ncontrib");
+}
+
+function renderOrcRows(prefix) {
+  const withDifal = prefix === "on";
+  const tbody = document.getElementById(prefix + "-tbody");
+  let html = "";
+  for (let i = 1; i <= ORC_ROWS; i++) {
+    html += `<tr>
+      <td style="padding:7px 6px;text-align:center;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">${i}</td>
+      <td style="padding:5px 6px;border-bottom:1px solid var(--border)">
+        <select id="${prefix}-prod-${i}" class="sim-input sim-select"
+          style="padding:6px 10px;font-size:12px;width:100%"
+          onchange="onOrcProdChange('${prefix}',${i})">
+          <option value="">— produto —</option>
+        </select>
+      </td>
+      <td style="padding:5px 6px;border-bottom:1px solid var(--border);text-align:right">
+        <input type="number" id="${prefix}-pv-${i}" min="0" step="1" placeholder="0,00"
+          class="sim-input" style="padding:6px 10px;font-size:12px;text-align:right;width:130px"
+          oninput="calcOrcTotal('${prefix}',${withDifal})">
+      </td>
+      <td style="padding:5px 6px;border-bottom:1px solid var(--border);text-align:center">
+        <input type="number" id="${prefix}-qtd-${i}" min="1" step="1" value="1"
+          class="sim-input" style="padding:6px 8px;font-size:12px;text-align:center;width:60px"
+          oninput="calcOrcTotal('${prefix}',${withDifal})">
+      </td>
+      <td id="${prefix}-total-${i}" style="padding:7px 8px;text-align:right;font-size:13px;white-space:nowrap;border-bottom:1px solid var(--border)">—</td>
+      <td id="${prefix}-margem-${i}" style="padding:7px 8px;text-align:center;border-bottom:1px solid var(--border)">—</td>
+    </tr>`;
+  }
+  tbody.innerHTML = html;
+  populateOrcProdutos(prefix);
+}
+
+function populateOrcProdutos(prefix) {
+  const sorted = [...allData].sort((a,b) => (a.produto||"").localeCompare(b.produto||""));
+  for (let i = 1; i <= ORC_ROWS; i++) {
+    const sel = document.getElementById(prefix + "-prod-" + i);
+    if (!sel) continue;
+    const current = sel.value;
+    sel.innerHTML = '<option value="">— produto —</option>';
+    sorted.forEach(r => {
+      const opt = document.createElement("option");
+      opt.value = r.id;
+      opt.textContent = r.produto || r.id;
+      sel.appendChild(opt);
+    });
+    if (current) sel.value = current;
+  }
+}
+
+function onOrcProdChange(prefix, n) {
+  const withDifal = prefix === "on";
+  const sel = document.getElementById(prefix + "-prod-" + n);
+  const pvEl = document.getElementById(prefix + "-pv-" + n);
+  const id = sel.value;
+  if (id) {
+    const row = allData.find(r => r.id === id);
+    if (row && row.menor_preco > 0) pvEl.value = row.menor_preco;
+  }
+  calcOrcTotal(prefix, withDifal);
+}
+
+function calcOrcMargemItem(row, pv, estadoDest, withDifal, modalidade) {
+  if (!row || pv <= 0) return null;
+  const pc = parseFloat(row.menor_preco) || 0;
+  if (pc <= 0) return null;
+
+  const trib      = (row.tributacao    || "").toUpperCase();
+  const nac       = (row.nacionalidade || "").toUpperCase();
+  const isIsento  = trib.includes("ISENTO");
+  const isImport  = nac.includes("IMPORTADO");
+  const origem    = "SC";
+
+  let custoMerc;
+  if (isIsento) {
+    custoMerc = pc;
+  } else {
+    const cred = nac.includes("NACIONAL") ? 0.12 : 0.04;
+    custoMerc = pc * (1 - cred);
+  }
+
+  const aliqInter = isIsento ? 0 : getAliqInter(origem, estadoDest, isImport);
+  const icmsNF    = pv * aliqInter;
+
+  let difal = 0;
+  if (withDifal && !isIsento) {
+    const aliqDest = ICMS[estadoDest] || 0.17;
+    difal = Math.max(0, pv * aliqDest - icmsNF);
+  }
+
+  const mdrRate  = modalidade === "CARTÃO" ? 0.025 : 0;
+  const irCsll   = pv * 0.033;
+  const mdr      = pv * mdrRate;
+
+  const totalCustos = custoMerc + icmsNF + difal + irCsll + mdr;
+  const margemR   = pv - totalCustos;
+  const margemPct = pv > 0 ? margemR / pv : 0;
+  return { margemR, margemPct };
+}
+
+function orcFarolBadge(pct) {
+  if (pct > 0.05) return `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:99px;background:#D1FAE5;color:#065F46;font-size:12px;font-weight:700">✔ ${fmtPct(pct)}</span>`;
+  if (pct > 0.02) return `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:99px;background:#FDE68A;color:#78350F;font-size:12px;font-weight:700">⚠ ${fmtPct(pct)}</span>`;
+  return `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:99px;background:#FEE2E2;color:#991B1B;font-size:12px;font-weight:700">✘ ${fmtPct(pct)}</span>`;
+}
+
+function calcOrcTotal(prefix, withDifal) {
+  const estado     = (document.getElementById(prefix + "-estado") || {}).value || "SC";
+  const modalidade = (document.getElementById(prefix + "-modal")  || {}).value || "PIX";
+  let grandTotal = 0, pondPv = 0, pondMargemR = 0;
+
+  for (let i = 1; i <= ORC_ROWS; i++) {
+    const sel     = document.getElementById(prefix + "-prod-"   + i);
+    const pvEl    = document.getElementById(prefix + "-pv-"     + i);
+    const qtdEl   = document.getElementById(prefix + "-qtd-"    + i);
+    const totalEl = document.getElementById(prefix + "-total-"  + i);
+    const margemEl= document.getElementById(prefix + "-margem-" + i);
+    if (!sel || !pvEl || !qtdEl) continue;
+
+    const id  = sel.value;
+    const pv  = parseFloat(pvEl.value) || 0;
+    const qtd = Math.max(1, parseInt(qtdEl.value) || 1);
+
+    if (!id || pv <= 0) {
+      totalEl.textContent = "—";
+      margemEl.innerHTML  = "—";
+      continue;
+    }
+
+    const row       = allData.find(r => r.id === id);
+    const lineTotal = pv * qtd;
+    grandTotal += lineTotal;
+    totalEl.textContent = fmtBRL(lineTotal);
+
+    const res = calcOrcMargemItem(row, pv, estado, withDifal, modalidade);
+    if (res) {
+      pondPv      += pv * qtd;
+      pondMargemR += res.margemR * qtd;
+      margemEl.innerHTML = orcFarolBadge(res.margemPct);
+    } else {
+      margemEl.innerHTML = "—";
+    }
+  }
+
+  document.getElementById(prefix + "-grand-total").textContent = fmtBRL(grandTotal);
+  const margemTotEl = document.getElementById(prefix + "-total-margem");
+  if (pondPv > 0) {
+    margemTotEl.innerHTML = orcFarolBadge(pondMargemR / pondPv);
+  } else {
+    margemTotEl.innerHTML = "";
+  }
+}
+
+function initOrcPage() {
+  const d = new Date(); d.setDate(d.getDate() + 30);
+  const dateStr = d.toISOString().split("T")[0];
+  const ocVal = document.getElementById("oc-validade");
+  const onVal = document.getElementById("on-validade");
+  if (ocVal && !ocVal.value) ocVal.value = dateStr;
+  if (onVal && !onVal.value) onVal.value = dateStr;
+
+  if (!document.getElementById("oc-prod-1")) renderOrcRows("oc");
+  if (!document.getElementById("on-prod-1")) renderOrcRows("on");
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function fmtBRL(v) {
+  if (v == null || isNaN(v)) return "—";
+  return "R$ " + Number(v).toLocaleString("pt-BR", { minimumFractionDigits:2, maximumFractionDigits:2 });
+}
+function fmtPct(v) {
+  return (v*100).toLocaleString("pt-BR",{minimumFractionDigits:1,maximumFractionDigits:1}) + "%";
+}
+function fmtPorUnid(preco, produto) {
+  if (!preco || preco <= 0 || !produto) return "—";
+  const m = produto.match(/[xX×]\s*(\d+)\s*(cp|cps|comp|caps?|ml|mcg|mg|g|ui|amp|frs?|bisnaga|sach|ser|inj|dos)\b/i)
+         || produto.match(/\bc\s*\/\s*(\d+)\b/i);
+  if (!m) return "—";
+  const qtd = parseInt(m[1]);
+  if (qtd < 2) return "—";
+  return fmtBRL(preco / qtd) + "/un";
+}
+let toastTimer;
+function toast(msg, type="") {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.className = "show" + (type ? " "+type : "");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.className = "", 4000);
+}
+function togglePin() {
+  const sb = document.getElementById("sidebar");
+  sb.classList.toggle("pinned");
+  sb.classList.toggle("expanded", sb.classList.contains("pinned"));
+}
+
+// ── Start ─────────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>

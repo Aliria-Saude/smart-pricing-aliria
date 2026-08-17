@@ -1,0 +1,6 @@
+*.xlsx
+*.command
+*.py
+node_modules/
+.DS_Store
+schema_auditoria.sql
