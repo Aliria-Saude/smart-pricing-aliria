@@ -2092,6 +2092,22 @@ function fecharModalNovaCotacao() {
   document.getElementById("modal-nova-cotacao").style.display = "none";
 }
 
+function ncotAutoCompleteEAN(val) {
+  const list = document.getElementById("ncot-ean-list");
+  if (!val || val.length < 3) { list.style.display = "none"; return; }
+  const q = val.toLowerCase();
+  const matches = allData.filter(r => r.ean?.toLowerCase().includes(q)).slice(0, 10);
+  if (!matches.length) { list.style.display = "none"; return; }
+  list.innerHTML = matches.map(r => `
+    <div onclick="ncotSelecionarProduto('${escHtml(r.ean||"")}','${escHtml(r.produto||"").replace(/'/g,"&#39;")}')"
+      style="padding:10px 14px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--border);transition:background .1s"
+      onmouseover="this.style.background='#FFF7ED'" onmouseout="this.style.background='#fff'">
+      <div style="font-weight:500;font-variant-numeric:tabular-nums">${escHtml(r.ean||"—")}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px">${escHtml(r.produto||"—")}</div>
+    </div>`).join("");
+  list.style.display = "block";
+}
+
 function ncotAutoComplete(val) {
   const list = document.getElementById("ncot-ac-list");
   if (!val || val.length < 3) { list.style.display = "none"; return; }
@@ -5442,10 +5458,13 @@ init();
       <h3 style="margin:0;font-size:17px">📋 Nova Solicitação de Cotação</h3>
       <button onclick="fecharModalNovaCotacao()" style="background:none;border:none;cursor:pointer;font-size:22px;color:var(--muted);line-height:1">✕</button>
     </div>
-    <div class="sim-field">
+    <div class="sim-field" style="position:relative">
       <div class="sim-label">EAN do Produto *</div>
-      <input class="sim-input" id="ncot-ean" placeholder="Ex: 7896382708442" type="text" maxlength="20"
-        oninput="buscarProdutoPorEAN(this.value)">
+      <input class="sim-input" id="ncot-ean" placeholder="Digite o EAN ou parte dele..."
+        type="text" maxlength="20" autocomplete="off"
+        oninput="ncotAutoCompleteEAN(this.value)"
+        onblur="setTimeout(()=>document.getElementById('ncot-ean-list').style.display='none',180)">
+      <div id="ncot-ean-list" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);z-index:999;max-height:220px;overflow-y:auto;margin-top:2px"></div>
     </div>
     <div class="sim-field" style="position:relative">
       <div class="sim-label">Descrição do Item *</div>
