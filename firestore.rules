@@ -50,6 +50,16 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // ── Cotações de preço ─────────────────────────────────────────────────────
+    match /cotacoes/{docId} {
+      allow read:   if isAuth();
+      // Qualquer usuário autenticado pode solicitar cotação
+      allow create: if isAuth() && request.auth.uid == request.resource.data.solicitante_uid;
+      // Qualquer usuário autenticado pode atualizar (marcar como coletada/atualizada)
+      allow update: if isAuth();
+      allow delete: if isAdmin();
+    }
+
     // ── Bloqueia qualquer outra coleção ───────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;

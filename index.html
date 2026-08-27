@@ -11,6 +11,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -218,6 +219,18 @@ select.filter-input { min-width: 160px; }
 .alert-box.red{background:#FEE2E2;border:1px solid #FECACA;color:#991B1B}
 .alert-box.blue{background:#EFF6FF;border:1px solid #BFDBFE;color:#1D4ED8}
 .alert-box.yellow{background:#FFFBEB;border:1px solid #FDE68A;color:#92400E}
+
+/* ── Cotações ─────────────────────────────────────────────────────────────── */
+.cot-status{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:700}
+.cot-pendente{background:#FEF3C7;color:#92400E;border:1px solid #FDE68A}
+.cot-coletada{background:#DBEAFE;color:#1D4ED8;border:1px solid #BFDBFE}
+.cot-atualizada{background:#D1FAE5;color:#065F46;border:1px solid #6EE7B7}
+.cot-table{width:100%;border-collapse:collapse;font-size:13px;min-width:900px}
+.cot-table thead th{background:#F9FAFB;padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border)}
+.cot-table tbody tr{border-bottom:1px solid var(--border);transition:background .1s}
+.cot-table tbody tr:hover{background:#FAFAFA}
+.cot-table tbody td{padding:10px 14px;vertical-align:middle}
+.cot-kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
 </style>
 </head>
 <body>
@@ -282,6 +295,15 @@ select.filter-input { min-width: 160px; }
           <rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
         </svg>
         <span>Dashboard</span>
+      </div>
+      <div class="nav-item" onclick="goto('cotacoes')" id="nav-cotacoes">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/>
+          <rect x="9" y="3" width="6" height="4" rx="1"/>
+          <line x1="9" y1="12" x2="15" y2="12"/>
+          <line x1="9" y1="16" x2="12" y2="16"/>
+        </svg>
+        <span>Cotações <span id="cot-badge" style="display:none;background:#ef4444;color:#fff;border-radius:99px;font-size:10px;padding:1px 6px;margin-left:4px">0</span></span>
       </div>
       <div class="nav-item" onclick="goto('precos')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -434,6 +456,83 @@ select.filter-input { min-width: 160px; }
               <div class="empty"><div class="empty-icon">📤</div><h3>Sem importações</h3><p>Importe uma planilha para começar</p></div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- COTAÇÕES -->
+      <div id="page-cotacoes" class="page">
+        <!-- KPIs -->
+        <div class="cot-kpi">
+          <div class="kpi-card">
+            <div class="kpi-icon" style="background:#FFF7ED">📋</div>
+            <div class="kpi-val" id="cot-kpi-total">—</div>
+            <div class="kpi-lbl">Total de Solicitações</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon" style="background:#FFFBEB">⏳</div>
+            <div class="kpi-val" id="cot-kpi-pendente" style="color:var(--yellow)">—</div>
+            <div class="kpi-lbl">Pendentes</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon" style="background:#EFF6FF">🔍</div>
+            <div class="kpi-val" id="cot-kpi-coletada" style="color:#1D4ED8">—</div>
+            <div class="kpi-lbl">Coletadas</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon" style="background:#F0FDF4">✅</div>
+            <div class="kpi-val" id="cot-kpi-atualizada" style="color:var(--green)">—</div>
+            <div class="kpi-lbl">Atualizadas no Sistema</div>
+          </div>
+        </div>
+
+        <!-- Ações e filtros -->
+        <div class="card" style="margin-bottom:20px">
+          <div class="sec-hd" style="margin-bottom:14px">
+            <h2>🔎 Solicitações de Cotação</h2>
+            <button class="btn btn-primary" onclick="abrirModalNovaCotacao()">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Nova Solicitação
+            </button>
+          </div>
+          <div class="filters" style="margin-bottom:16px">
+            <input class="filter-input" type="text" id="cot-f-desc" placeholder="Buscar por EAN ou descrição..." oninput="renderCotacoes()" style="flex:2">
+            <select class="filter-input" id="cot-f-status" onchange="renderCotacoes()">
+              <option value="">Todos os status</option>
+              <option value="pendente">⏳ Pendentes</option>
+              <option value="coletada">🔍 Coletadas</option>
+              <option value="atualizada">✅ Atualizadas</option>
+            </select>
+            <input class="filter-input" type="text" id="cot-f-user" placeholder="Filtrar por solicitante..." oninput="renderCotacoes()">
+          </div>
+          <div class="table-wrap">
+            <table class="cot-table">
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Solicitante</th>
+                  <th>EAN</th>
+                  <th>Descrição do Item</th>
+                  <th>Status</th>
+                  <th>Coletado por</th>
+                  <th>Preço Coletado</th>
+                  <th>Ações</th>
+                </tr>
+              </thead>
+              <tbody id="cot-tbody">
+                <tr><td colspan="8" style="text-align:center;padding:40px;color:var(--muted)">Carregando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="pagination" style="margin-top:12px">
+            <span id="cot-count" style="color:var(--muted);font-size:13px"></span>
+          </div>
+        </div>
+
+        <!-- Alerta de configuração EmailJS -->
+        <div id="cot-email-alert" style="display:none" class="alert-box yellow">
+          ⚠️ <strong>Configure o EmailJS</strong> para ativar as notificações automáticas por e-mail.
+          Abra o código-fonte e preencha as constantes <code>EMAILJS_PUBLIC_KEY</code>, <code>EMAILJS_SERVICE_ID</code>, <code>EMAILJS_TPL_SOLICITA</code> e <code>EMAILJS_TPL_ATUALIZA</code>.
+          <a href="https://emailjs.com" target="_blank" rel="noopener" style="color:#92400E;font-weight:700;margin-left:6px">Criar conta grátis →</a>
         </div>
       </div>
 
@@ -1522,6 +1621,7 @@ const _dbAdapter = {
 
 const PAGES = {
   dashboard:             { title: "Dashboard",              sub: "Visão geral dos preços de compra e simulações" },
+  cotacoes:              { title: "Cotações",               sub: "Solicitações de pesquisa de preço no mercado" },
   precos:                { title: "Preços de Compra",       sub: "Base consolidada por fornecedor" },
   cadastro:              { title: "Cadastro",               sub: "Inclua itens manualmente no sistema" },
   simulacao:             { title: "Simulação",              sub: "Calcule a margem pelo preço de venda" },
@@ -1837,12 +1937,320 @@ function goto(page) {
   if (page === "licitacoes")             initLicitacoesPage();
   if (page === "pregoes-participados")   initPregoesPart();
   if (page === "auditoria")             carregarAuditoria();
+  if (page === "cotacoes")              initCotacoes();
   // detalhe não tem nav-item próprio — mantém "licitacoes" ativo
   if (page === "licitacao-detalhe") {
     document.querySelectorAll(".nav-item").forEach(el => {
       el.classList.remove("active");
       if (el.getAttribute("onclick")?.includes("'licitacoes'")) el.classList.add("active");
     });
+  }
+}
+
+// ── EmailJS — Configuração ────────────────────────────────────────────────────
+// SETUP: Crie conta grátis em https://emailjs.com e preencha os valores abaixo.
+// Depois vá em Email Services → crie um serviço Gmail → copie o Service ID.
+// Em Email Templates → crie dois templates (veja instruções no README).
+const EMAILJS_PUBLIC_KEY   = "SEU_PUBLIC_KEY_AQUI";      // Account → API Keys → Public Key
+const EMAILJS_SERVICE_ID   = "SEU_SERVICE_ID_AQUI";      // Email Services → Service ID
+const EMAILJS_TPL_SOLICITA = "template_solicita";         // Template quando nova cotação é criada
+const EMAILJS_TPL_ATUALIZA = "template_atualiza";         // Template quando preço é atualizado
+const EMAIL_COLETORA       = "manoela.francisco@eualiria.com.br";
+
+let _emailJSReady = false;
+function _initEmailJS() {
+  if (typeof emailjs === "undefined") return;
+  if (EMAILJS_PUBLIC_KEY === "SEU_PUBLIC_KEY_AQUI") {
+    document.getElementById("cot-email-alert")?.style && (document.getElementById("cot-email-alert").style.display = "flex");
+    return;
+  }
+  emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY });
+  _emailJSReady = true;
+}
+
+async function _enviarEmail(templateId, params) {
+  if (!_emailJSReady) return; // silencioso — não bloqueia o fluxo principal
+  try {
+    await emailjs.send(EMAILJS_SERVICE_ID, templateId, params);
+  } catch(e) {
+    console.warn("EmailJS erro:", e);
+  }
+}
+
+// ── Cotações — Estado ─────────────────────────────────────────────────────────
+let _cotData     = [];
+let _cotFiltered = [];
+
+// ── Cotações — Init ───────────────────────────────────────────────────────────
+async function initCotacoes() {
+  _initEmailJS();
+  const tbody = document.getElementById("cot-tbody");
+  tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--muted)">⏳ Carregando...</td></tr>`;
+
+  try {
+    const { data, error } = await db.from("cotacoes")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    _cotData = data || [];
+    _atualizarKpiCotacoes();
+    _atualizarBadge();
+    renderCotacoes();
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:40px;color:#dc2626">Erro: ${escHtml(e.message)}</td></tr>`;
+    toast("Erro ao carregar cotações: " + e.message, "error");
+  }
+}
+
+function _atualizarKpiCotacoes() {
+  const total    = _cotData.length;
+  const pendente = _cotData.filter(r => r.status === "pendente").length;
+  const coletada = _cotData.filter(r => r.status === "coletada").length;
+  const atualiza = _cotData.filter(r => r.status === "atualizada").length;
+  document.getElementById("cot-kpi-total").textContent     = total;
+  document.getElementById("cot-kpi-pendente").textContent  = pendente;
+  document.getElementById("cot-kpi-coletada").textContent  = coletada;
+  document.getElementById("cot-kpi-atualizada").textContent= atualiza;
+}
+
+function _atualizarBadge() {
+  const n = _cotData.filter(r => r.status === "pendente").length;
+  const badge = document.getElementById("cot-badge");
+  if (!badge) return;
+  if (n > 0) { badge.style.display = "inline"; badge.textContent = n; }
+  else        { badge.style.display = "none"; }
+}
+
+// ── Cotações — Render ─────────────────────────────────────────────────────────
+function renderCotacoes() {
+  const fDesc   = (document.getElementById("cot-f-desc")?.value   || "").toLowerCase();
+  const fStatus = document.getElementById("cot-f-status")?.value  || "";
+  const fUser   = (document.getElementById("cot-f-user")?.value   || "").toLowerCase();
+
+  _cotFiltered = _cotData.filter(r => {
+    if (fDesc   && !r.ean?.toLowerCase().includes(fDesc) && !r.descricao?.toLowerCase().includes(fDesc)) return false;
+    if (fStatus && r.status !== fStatus) return false;
+    if (fUser   && !r.solicitante_email?.toLowerCase().includes(fUser) && !r.solicitante_nome?.toLowerCase().includes(fUser)) return false;
+    return true;
+  });
+
+  document.getElementById("cot-count").textContent =
+    `${_cotFiltered.length} solicitação${_cotFiltered.length !== 1 ? "s" : ""}`;
+
+  const tbody = document.getElementById("cot-tbody");
+  if (!_cotFiltered.length) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--muted)"><div class="empty-icon">📋</div><div>Nenhuma solicitação encontrada</div></td></tr>`;
+    return;
+  }
+
+  const STATUS_MAP = {
+    pendente:   `<span class="cot-status cot-pendente">⏳ Pendente</span>`,
+    coletada:   `<span class="cot-status cot-coletada">🔍 Coletada</span>`,
+    atualizada: `<span class="cot-status cot-atualizada">✅ Atualizada</span>`,
+  };
+
+  tbody.innerHTML = _cotFiltered.map(r => {
+    const dt  = new Date(r.created_at);
+    const dtStr = dt.toLocaleDateString("pt-BR") + " " + dt.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
+    const status = STATUS_MAP[r.status] || `<span class="cot-status">${escHtml(r.status)}</span>`;
+    const preco  = r.preco_coletado > 0 ? `R$ ${Number(r.preco_coletado).toLocaleString("pt-BR",{minimumFractionDigits:2})}` : "—";
+    const coletadoPor = r.coletado_por ? escHtml(r.coletado_por.split("@")[0]) : "—";
+
+    // Botões de ação conforme status
+    let acoes = "";
+    if (r.status === "pendente") {
+      acoes = `<button class="btn btn-sm" style="background:#DBEAFE;color:#1D4ED8;border:none" onclick="abrirModalColetar('${r.id}','${escHtml(r.descricao||"")}','${escHtml(r.ean||"")}','${escHtml(r.solicitante_email||"")}')">🔍 Coletar</button>`;
+    } else if (r.status === "coletada") {
+      acoes = `<span style="font-size:11px;color:var(--muted)">Aguardando cadastro</span>`;
+    } else {
+      acoes = `<span style="font-size:11px;color:var(--green)">Concluída</span>`;
+    }
+
+    return `<tr>
+      <td style="font-size:12px;white-space:nowrap;color:var(--muted)">${escHtml(dtStr)}</td>
+      <td style="font-size:12px"><div style="font-weight:500">${escHtml(r.solicitante_nome||"—")}</div><div style="color:var(--muted);font-size:11px">${escHtml(r.solicitante_email||"")}</div></td>
+      <td style="font-size:12px;font-variant-numeric:tabular-nums">${escHtml(r.ean||"—")}</td>
+      <td style="min-width:200px"><div style="font-weight:500">${escHtml(r.descricao||"—")}</div>${r.observacao ? `<div style="font-size:11px;color:var(--muted)">${escHtml(r.observacao)}</div>` : ""}</td>
+      <td>${status}</td>
+      <td style="font-size:12px">${coletadoPor}</td>
+      <td style="font-size:12px;font-weight:600;font-variant-numeric:tabular-nums">${escHtml(preco)}</td>
+      <td>${acoes}</td>
+    </tr>`;
+  }).join("");
+}
+
+// ── Cotações — Nova Solicitação ───────────────────────────────────────────────
+function abrirModalNovaCotacao() {
+  document.getElementById("ncot-ean").value  = "";
+  document.getElementById("ncot-desc").value = "";
+  document.getElementById("ncot-obs").value  = "";
+  document.getElementById("ncot-produto-info").style.display = "none";
+  document.getElementById("modal-nova-cotacao").style.display = "flex";
+  setTimeout(() => document.getElementById("ncot-ean").focus(), 100);
+}
+function fecharModalNovaCotacao() {
+  document.getElementById("modal-nova-cotacao").style.display = "none";
+}
+
+function buscarProdutoPorEAN(ean) {
+  const infoEl  = document.getElementById("ncot-produto-info");
+  const nomeEl  = document.getElementById("ncot-produto-nome");
+  const descInp = document.getElementById("ncot-desc");
+  if (!ean || ean.length < 8) { infoEl.style.display = "none"; return; }
+  const prod = allData.find(r => r.ean === ean.trim());
+  if (prod) {
+    nomeEl.textContent = prod.produto || prod.ean;
+    if (!descInp.value) descInp.value = prod.produto || "";
+    infoEl.style.display = "block";
+  } else {
+    infoEl.style.display = "none";
+  }
+}
+
+async function salvarNovaCotacao() {
+  const ean   = document.getElementById("ncot-ean").value.trim();
+  const desc  = document.getElementById("ncot-desc").value.trim();
+  const obs   = document.getElementById("ncot-obs").value.trim();
+
+  if (!ean || !desc) {
+    toast("Preencha o EAN e a descrição do item.", "error"); return;
+  }
+
+  const btn = document.getElementById("ncot-btn-salvar");
+  btn.disabled = true; btn.textContent = "Enviando...";
+
+  try {
+    const solNome  = _currentUser.displayName || _currentUser.email.split("@")[0];
+    const solEmail = _currentUser.email;
+
+    const { data: ins, error } = await db.from("cotacoes").insert({
+      solicitante_uid:   _currentUser.uid,
+      solicitante_email: solEmail,
+      solicitante_nome:  solNome,
+      ean,
+      descricao:  desc,
+      observacao: obs || null,
+      status:     "pendente",
+      created_at: new Date().toISOString(),
+    }).select().single();
+    if (error) throw error;
+
+    // Notificar coletora por e-mail
+    await _enviarEmail(EMAILJS_TPL_SOLICITA, {
+      to_email:    EMAIL_COLETORA,
+      solicitante: solNome,
+      ean,
+      descricao:   desc,
+      observacao:  obs || "—",
+      data:        new Date().toLocaleDateString("pt-BR"),
+    });
+
+    toast("Solicitação enviada! Manoela será notificada.", "success");
+    fecharModalNovaCotacao();
+    _cotData.unshift(ins);
+    _atualizarKpiCotacoes();
+    _atualizarBadge();
+    renderCotacoes();
+  } catch(e) {
+    toast("Erro ao salvar: " + e.message, "error");
+  } finally {
+    btn.disabled = false; btn.textContent = "📤 Enviar Solicitação";
+  }
+}
+
+// ── Cotações — Coletar Preço ──────────────────────────────────────────────────
+function abrirModalColetar(id, desc, ean, solEmail) {
+  document.getElementById("mcol-id").value       = id;
+  document.getElementById("mcol-sol-email").value = solEmail;
+  document.getElementById("mcol-desc").textContent = desc;
+  document.getElementById("mcol-ean").textContent  = "EAN: " + ean;
+  document.getElementById("mcol-preco").value = "";
+  document.getElementById("mcol-obs").value   = "";
+  document.getElementById("modal-coletar").style.display = "flex";
+  setTimeout(() => document.getElementById("mcol-preco").focus(), 100);
+}
+function fecharModalColetar() {
+  document.getElementById("modal-coletar").style.display = "none";
+}
+
+async function confirmarColeta() {
+  const id        = document.getElementById("mcol-id").value;
+  const solEmail  = document.getElementById("mcol-sol-email").value;
+  const preco     = parseFloat(document.getElementById("mcol-preco").value) || 0;
+  const obs       = document.getElementById("mcol-obs").value.trim();
+
+  if (!preco) { toast("Informe o preço coletado.", "error"); return; }
+
+  try {
+    const upd = {
+      status:         "coletada",
+      preco_coletado: preco,
+      coletado_por:   _currentUser.email,
+      coletado_obs:   obs || null,
+      coletado_em:    new Date().toISOString(),
+    };
+    const { error } = await db.from("cotacoes").update(upd).eq("id", id);
+    if (error) throw error;
+
+    // Atualiza localmente
+    const idx = _cotData.findIndex(r => r.id === id);
+    if (idx >= 0) Object.assign(_cotData[idx], upd);
+
+    // Notificar solicitante
+    const cot = _cotData[idx] || {};
+    await _enviarEmail(EMAILJS_TPL_ATUALIZA, {
+      to_email:     solEmail,
+      solicitante:  cot.solicitante_nome || solEmail,
+      ean:          cot.ean      || "—",
+      descricao:    cot.descricao || "—",
+      preco:        `R$ ${preco.toLocaleString("pt-BR",{minimumFractionDigits:2})}`,
+      fornecedor:   obs || "—",
+      coletado_por: _currentUser.email,
+      data:         new Date().toLocaleDateString("pt-BR"),
+    });
+
+    toast("Coleta registrada! Solicitante será notificado.", "success");
+    fecharModalColetar();
+    _atualizarKpiCotacoes();
+    _atualizarBadge();
+    renderCotacoes();
+  } catch(e) {
+    toast("Erro: " + e.message, "error");
+  }
+}
+
+// ── Cotações — Auto-flag quando preço é atualizado no cadastro ────────────────
+async function _autoFlagCotacoesPorEAN(ean) {
+  if (!ean) return;
+  try {
+    const { data, error } = await db.from("cotacoes")
+      .select("*")
+      .eq("ean", ean)
+      .eq("status", "coletada");
+    if (error || !data?.length) return;
+
+    for (const cot of data) {
+      const upd = { status: "atualizada", atualizado_em: new Date().toISOString() };
+      await db.from("cotacoes").update(upd).eq("id", cot.id);
+
+      // E-mail para o solicitante
+      await _enviarEmail(EMAILJS_TPL_ATUALIZA, {
+        to_email:     cot.solicitante_email,
+        solicitante:  cot.solicitante_nome || cot.solicitante_email,
+        ean:          cot.ean      || "—",
+        descricao:    cot.descricao || "—",
+        preco:        cot.preco_coletado ? `R$ ${Number(cot.preco_coletado).toLocaleString("pt-BR",{minimumFractionDigits:2})}` : "—",
+        fornecedor:   cot.coletado_obs || "—",
+        coletado_por: _currentUser.email,
+        data:         new Date().toLocaleDateString("pt-BR"),
+      });
+    }
+    // Atualiza estado local se a aba estiver visível
+    _cotData.filter(r => r.ean === ean && r.status === "coletada")
+      .forEach(r => { r.status = "atualizada"; r.atualizado_em = new Date().toISOString(); });
+    _atualizarBadge();
+  } catch(e) {
+    console.warn("_autoFlagCotacoes:", e);
   }
 }
 
@@ -2156,6 +2564,8 @@ function editPriceCell(td, rowId, field, valorAtual) {
       if (updEl) updEl.textContent = fmt;
       if (item) item.updated_at = new Date().toISOString();
       toast("Preço atualizado", "success");
+      // Auto-flag cotações com mesmo EAN que estejam no status "coletada"
+      if (item?.ean) _autoFlagCotacoesPorEAN(item.ean);
     } catch(e) { toast("Erro ao salvar: " + e.message, "error"); }
   }
 
@@ -4999,6 +5409,69 @@ init();
 
 <!-- Input oculto para importar edital no detalhe do pregão -->
 <input type="file" id="det-edital-input" accept=".pdf,.xlsx,.xls,.csv" style="display:none" onchange="onEditalFileChange(event)">
+
+<!-- Modal: Nova Cotação -->
+<div id="modal-nova-cotacao" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;padding:20px">
+  <div style="background:#fff;border-radius:14px;padding:28px 30px;max-width:520px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.25)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <h3 style="margin:0;font-size:17px">📋 Nova Solicitação de Cotação</h3>
+      <button onclick="fecharModalNovaCotacao()" style="background:none;border:none;cursor:pointer;font-size:22px;color:var(--muted);line-height:1">✕</button>
+    </div>
+    <div class="sim-field">
+      <div class="sim-label">EAN do Produto *</div>
+      <input class="sim-input" id="ncot-ean" placeholder="Ex: 7896382708442" type="text" maxlength="20"
+        oninput="buscarProdutoPorEAN(this.value)">
+    </div>
+    <div class="sim-field">
+      <div class="sim-label">Descrição do Item *</div>
+      <input class="sim-input" id="ncot-desc" placeholder="Nome do medicamento / produto">
+    </div>
+    <div class="sim-field">
+      <div class="sim-label">Observações (opcional)</div>
+      <textarea class="sim-input" id="ncot-obs" rows="2" placeholder="Informações adicionais para quem vai coletar o preço" style="resize:vertical"></textarea>
+    </div>
+    <div id="ncot-produto-info" style="display:none;background:#F0FDF4;border:1px solid #6EE7B7;border-radius:8px;padding:10px 14px;font-size:13px;color:#065F46;margin-bottom:14px">
+      ✅ Produto encontrado: <strong id="ncot-produto-nome"></strong>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:6px">
+      <button class="btn btn-secondary" onclick="fecharModalNovaCotacao()">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarNovaCotacao()" id="ncot-btn-salvar">
+        📤 Enviar Solicitação
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Marcar como Coletada -->
+<div id="modal-coletar" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;padding:20px">
+  <div style="background:#fff;border-radius:14px;padding:28px 30px;max-width:460px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.25)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <h3 style="margin:0;font-size:17px">🔍 Registrar Preço Coletado</h3>
+      <button onclick="fecharModalColetar()" style="background:none;border:none;cursor:pointer;font-size:22px;color:var(--muted);line-height:1">✕</button>
+    </div>
+    <input type="hidden" id="mcol-id">
+    <input type="hidden" id="mcol-sol-email">
+    <div style="background:#F9FAFB;border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:13px">
+      <div style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Item solicitado</div>
+      <div style="font-weight:600" id="mcol-desc">—</div>
+      <div style="color:var(--muted);margin-top:2px" id="mcol-ean">—</div>
+    </div>
+    <div class="sim-field">
+      <div class="sim-label">Melhor Preço Encontrado (R$)</div>
+      <input class="sim-input" id="mcol-preco" type="number" step="0.01" min="0" placeholder="0,00">
+    </div>
+    <div class="sim-field">
+      <div class="sim-label">Fornecedor / Observação</div>
+      <input class="sim-input" id="mcol-obs" placeholder="Onde foi encontrado o preço">
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:6px">
+      <button class="btn btn-secondary" onclick="fecharModalColetar()">Cancelar</button>
+      <button class="btn btn-primary" onclick="confirmarColeta()" style="background:#1D4ED8">
+        ✅ Confirmar Coleta
+      </button>
+    </div>
+  </div>
+</div>
 
 <!-- Modal: Novo / Editar Pregão -->
 <div id="modal-novo-pregao" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;padding:20px">
