@@ -2031,7 +2031,7 @@ function renderCotacoes() {
   const fStatus = document.getElementById("cot-f-status")?.value  || "";
   const fUser   = (document.getElementById("cot-f-user")?.value   || "").toLowerCase();
 
-  _cotFiltered = _cotData.filter(r => {
+  _cotFiltered = _cotData.filter(r => !!r).filter(r => {
     if (fDesc   && !r.ean?.toLowerCase().includes(fDesc) && !r.descricao?.toLowerCase().includes(fDesc)) return false;
     if (fStatus && r.status !== fStatus) return false;
     if (fUser   && !r.solicitante_email?.toLowerCase().includes(fUser) && !r.solicitante_nome?.toLowerCase().includes(fUser)) return false;
@@ -2168,7 +2168,7 @@ async function salvarNovaCotacao() {
     const solNome  = _currentUser.displayName || _currentUser.email.split("@")[0];
     const solEmail = _currentUser.email;
 
-    const { data: ins, error } = await db.from("cotacoes").insert({
+    const registro = {
       solicitante_uid:   _currentUser.uid,
       solicitante_email: solEmail,
       solicitante_nome:  solNome,
@@ -2177,8 +2177,11 @@ async function salvarNovaCotacao() {
       observacao: obs || null,
       status:     "pendente",
       created_at: new Date().toISOString(),
-    }).select().single();
+    };
+    const { data: ins, error } = await db.from("cotacoes").insert(registro);
     if (error) throw error;
+    // ins pode ser array — pega o primeiro ou reconstrói o objeto
+    const inserido = (Array.isArray(ins) ? ins[0] : ins) || registro;
 
     // Notificar coletora por e-mail
     await _enviarEmail(EMAILJS_TPL_SOLICITA, {
@@ -2192,7 +2195,7 @@ async function salvarNovaCotacao() {
 
     toast("Solicitação enviada! Manoela será notificada.", "success");
     fecharModalNovaCotacao();
-    _cotData.unshift(ins);
+    _cotData.unshift(inserido);
     _atualizarKpiCotacoes();
     _atualizarBadge();
     renderCotacoes();
