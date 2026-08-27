@@ -2007,10 +2007,11 @@ async function initCotacoes() {
 }
 
 function _atualizarKpiCotacoes() {
-  const total    = _cotData.length;
-  const pendente = _cotData.filter(r => r.status === "pendente").length;
-  const coletada = _cotData.filter(r => r.status === "coletada").length;
-  const atualiza = _cotData.filter(r => r.status === "atualizada").length;
+  const validos  = _cotData.filter(r => r && r.status);
+  const total    = validos.length;
+  const pendente = validos.filter(r => r.status === "pendente").length;
+  const coletada = validos.filter(r => r.status === "coletada").length;
+  const atualiza = validos.filter(r => r.status === "atualizada").length;
   document.getElementById("cot-kpi-total").textContent     = total;
   document.getElementById("cot-kpi-pendente").textContent  = pendente;
   document.getElementById("cot-kpi-coletada").textContent  = coletada;
@@ -2018,7 +2019,7 @@ function _atualizarKpiCotacoes() {
 }
 
 function _atualizarBadge() {
-  const n = _cotData.filter(r => r.status === "pendente").length;
+  const n = _cotData.filter(r => r && r.status === "pendente").length;
   const badge = document.getElementById("cot-badge");
   if (!badge) return;
   if (n > 0) { badge.style.display = "inline"; badge.textContent = n; }
@@ -2178,10 +2179,8 @@ async function salvarNovaCotacao() {
       status:     "pendente",
       created_at: new Date().toISOString(),
     };
-    const { data: ins, error } = await db.from("cotacoes").insert(registro);
+    const { error } = await db.from("cotacoes").insert(registro);
     if (error) throw error;
-    // ins pode ser array — pega o primeiro ou reconstrói o objeto
-    const inserido = (Array.isArray(ins) ? ins[0] : ins) || registro;
 
     // Notificar coletora por e-mail
     await _enviarEmail(EMAILJS_TPL_SOLICITA, {
@@ -2195,10 +2194,8 @@ async function salvarNovaCotacao() {
 
     toast("Solicitação enviada! Manoela será notificada.", "success");
     fecharModalNovaCotacao();
-    _cotData.unshift(inserido);
-    _atualizarKpiCotacoes();
-    _atualizarBadge();
-    renderCotacoes();
+    // Recarrega a lista completa do Firestore para garantir dados limpos
+    await initCotacoes();
   } catch(e) {
     toast("Erro ao salvar: " + e.message, "error");
   } finally {
