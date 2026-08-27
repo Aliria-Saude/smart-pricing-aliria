@@ -50,6 +50,11 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // ── Usuários (perfil e flags de primeiro acesso) ──────────────────────────
+    match /usuarios/{uid} {
+      allow read, write: if isAuth() && request.auth.uid == uid;
+    }
+
     // ── Cotações de preço ─────────────────────────────────────────────────────
     match /cotacoes/{docId} {
       allow read:   if isAuth();

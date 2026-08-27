@@ -1679,6 +1679,8 @@ async function init() {
       document.getElementById("login-screen").style.display = "none";
       document.querySelector(".layout").style.display = "flex";
       if (event === "SIGNED_IN") {
+        const isPrimeiro = await _verificarPrimeiroAcesso(session.user);
+        if (isPrimeiro) return; // modal de reset bloqueia o app
         registrarAuditoria("login", {});
         _startInactivityWatch();
       }
@@ -1728,6 +1730,86 @@ function _atualizarUIUsuario(user) {
   document.getElementById("user-avatar-ini").textContent   = ini;
   document.getElementById("user-nome-display").textContent  = nome;
   document.getElementById("user-email-display").textContent = email;
+}
+
+// ── Primeiro Acesso — Reset de senha obrigatório ──────────────────────────
+async function _verificarPrimeiroAcesso(user) {
+  try {
+    // Verifica flag no Firestore: usuarios/{uid}.senha_redefinida
+    const snap = await _fdb.collection("usuarios").doc(user.uid).get();
+    if (snap.exists && snap.data().senha_redefinida === true) return false;
+    // Nunca redefiniu → mostra modal
+    document.querySelector(".layout").style.display = "none";
+    document.getElementById("modal-primeiro-acesso").style.display = "flex";
+    setTimeout(() => document.getElementById("novo-senha-1").focus(), 200);
+    return true;
+  } catch(e) {
+    console.warn("_verificarPrimeiroAcesso:", e);
+    return false; // em caso de erro, não bloqueia
+  }
+}
+
+function validarForcaSenha(val) {
+  const fill = document.getElementById("forca-senha-fill");
+  const txt  = document.getElementById("forca-senha-txt");
+  if (!val) { fill.style.width = "0%"; txt.textContent = ""; return; }
+  let pontos = 0;
+  if (val.length >= 8)  pontos++;
+  if (/[A-Z]/.test(val)) pontos++;
+  if (/[0-9]/.test(val)) pontos++;
+  if (/[^A-Za-z0-9]/.test(val)) pontos++;
+  const niveis = [
+    { pct:"25%", cor:"#ef4444", label:"Muito fraca" },
+    { pct:"50%", cor:"#f97316", label:"Fraca" },
+    { pct:"75%", cor:"#eab308", label:"Boa" },
+    { pct:"100%",cor:"#16a34a", label:"Forte 💪" },
+  ];
+  const n = niveis[pontos - 1] || niveis[0];
+  fill.style.width = n.pct;
+  fill.style.background = n.cor;
+  txt.style.color = n.cor;
+  txt.textContent = n.label;
+}
+
+async function confirmarNovaSenha() {
+  const s1   = document.getElementById("novo-senha-1").value;
+  const s2   = document.getElementById("novo-senha-2").value;
+  const erro = document.getElementById("primo-acesso-erro");
+  const btn  = document.getElementById("btn-confirmar-senha");
+
+  erro.style.display = "none";
+  if (s1.length < 8) {
+    erro.textContent = "A senha deve ter no mínimo 8 caracteres.";
+    erro.style.display = "block"; return;
+  }
+  if (s1 !== s2) {
+    erro.textContent = "As senhas não coincidem.";
+    erro.style.display = "block"; return;
+  }
+
+  btn.disabled = true; btn.textContent = "Salvando...";
+  try {
+    // Atualiza a senha no Firebase Auth
+    await _fauth.currentUser.updatePassword(s1);
+    // Marca como redefinida no Firestore
+    await _fdb.collection("usuarios").doc(_currentUser.uid).set({
+      email: _currentUser.email,
+      senha_redefinida: true,
+      redefinida_em: new Date().toISOString(),
+    }, { merge: true });
+
+    document.getElementById("modal-primeiro-acesso").style.display = "none";
+    document.querySelector(".layout").style.display = "flex";
+    toast("Senha definida com sucesso! Bem-vindo(a)! 🎉", "success");
+    registrarAuditoria("login", {});
+    _startInactivityWatch();
+    await _initApp();
+  } catch(e) {
+    erro.textContent = "Erro ao salvar: " + (e.message || e);
+    erro.style.display = "block";
+  } finally {
+    btn.disabled = false; btn.textContent = "✅ Definir minha senha";
+  }
 }
 
 // ── Auth — Login / Logout ─────────────────────────────────────────────────
@@ -5456,6 +5538,41 @@ init();
 
 <!-- Input oculto para importar edital no detalhe do pregão -->
 <input type="file" id="det-edital-input" accept=".pdf,.xlsx,.xls,.csv" style="display:none" onchange="onEditalFileChange(event)">
+
+<!-- Modal: Primeiro Acesso — Reset de Senha -->
+<div id="modal-primeiro-acesso" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:99999;align-items:center;justify-content:center;padding:20px">
+  <div style="background:#fff;border-radius:18px;padding:40px 36px;max-width:420px;width:100%;box-shadow:0 24px 60px rgba(0,0,0,.35);text-align:center">
+    <div style="width:60px;height:60px;background:#FFF7ED;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:28px">🔐</div>
+    <h2 style="font-size:20px;font-weight:700;color:#1A1A2E;margin-bottom:8px">Primeiro acesso</h2>
+    <p style="font-size:14px;color:#6B7280;margin-bottom:28px">Por segurança, crie uma senha pessoal antes de continuar. A senha provisória não poderá ser usada novamente.</p>
+
+    <div id="primo-acesso-erro" style="display:none;background:#fee2e2;color:#b91c1c;border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:16px;text-align:left"></div>
+
+    <div style="text-align:left;margin-bottom:14px">
+      <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:6px">Nova Senha</label>
+      <input id="novo-senha-1" type="password" placeholder="Mínimo 8 caracteres"
+        style="width:100%;padding:11px 14px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:14px;outline:none;transition:border .15s"
+        onfocus="this.style.borderColor='#F97316'" onblur="this.style.borderColor='#E5E7EB'"
+        oninput="validarForcaSenha(this.value)">
+      <div id="forca-senha-bar" style="height:4px;border-radius:99px;margin-top:6px;background:#E5E7EB;overflow:hidden">
+        <div id="forca-senha-fill" style="height:100%;width:0%;border-radius:99px;transition:all .3s"></div>
+      </div>
+      <div id="forca-senha-txt" style="font-size:11px;color:var(--muted);margin-top:4px"></div>
+    </div>
+    <div style="text-align:left;margin-bottom:24px">
+      <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:6px">Confirmar Nova Senha</label>
+      <input id="novo-senha-2" type="password" placeholder="Repita a senha"
+        style="width:100%;padding:11px 14px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:14px;outline:none;transition:border .15s"
+        onfocus="this.style.borderColor='#F97316'" onblur="this.style.borderColor='#E5E7EB'"
+        onkeydown="if(event.key==='Enter')confirmarNovaSenha()">
+    </div>
+    <button onclick="confirmarNovaSenha()" id="btn-confirmar-senha"
+      style="width:100%;padding:13px;background:#F97316;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;transition:background .15s"
+      onmouseover="this.style.background='#EA6B0A'" onmouseout="this.style.background='#F97316'">
+      ✅ Definir minha senha
+    </button>
+  </div>
+</div>
 
 <!-- Modal: Nova Cotação -->
 <div id="modal-nova-cotacao" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;padding:20px">
