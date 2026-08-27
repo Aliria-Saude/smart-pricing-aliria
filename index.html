@@ -1129,6 +1129,8 @@ select.filter-input { min-width: 160px; }
               <div class="sim-field"><div class="sim-label">UNIMED</div><input class="sim-input" type="number" id="cad-unimed" placeholder="R$" min="0" step="0.01"></div>
               <div class="sim-field"><div class="sim-label">MEDLIVE</div><input class="sim-input" type="number" id="cad-medlive" placeholder="R$" min="0" step="0.01"></div>
               <div class="sim-field"><div class="sim-label">ONCO</div><input class="sim-input" type="number" id="cad-onco" placeholder="R$" min="0" step="0.01"></div>
+              <div class="sim-field"><div class="sim-label">TRESPHARMA</div><input class="sim-input" type="number" id="cad-trespharma" placeholder="R$" min="0" step="0.01"></div>
+              <div class="sim-field"><div class="sim-label">JUSTMED</div><input class="sim-input" type="number" id="cad-justmed" placeholder="R$" min="0" step="0.01"></div>
             </div>
           </div>
 
@@ -1459,7 +1461,7 @@ const BRAND_MASCOTS_B64 = "iVBORw0KGgoAAAANSUhEUgAAAnUAAAF0CAIAAADKIVg7AAAAAXNSR
 </script>
 <script>
 const DIST = ["INTEGRALMED","VIVEO","CIAMED","PL","SANTA CRUZ","SANTA RITA",
-              "GAM","PONTUAL","AGILLE","UNIMED","MEDLIVE","ONCO"];
+              "GAM","PONTUAL","AGILLE","UNIMED","MEDLIVE","ONCO","TRESPHARMA","JUSTMED"];
 
 const ICMS = {
   AC:.19, AL:.19, AM:.20, AP:.18, BA:.205, CE:.20, DF:.17, ES:.17,
@@ -2576,7 +2578,7 @@ function editPriceCell(td, rowId, field, valorAtual) {
     if (item) {
       item[field] = novoVal;
       // Recalcula menor_preco e melhor_fornecedor
-      const FORN_KEYS = ["integralmed","viveo","ciamed","pl","santa_cruz","santa_rita","gam","pontual","agille","unimed","medlive","onco"];
+      const FORN_KEYS = ["integralmed","viveo","ciamed","pl","santa_cruz","santa_rita","gam","pontual","agille","unimed","medlive","onco","trespharma","justmed"];
       let menor = Infinity, melhor = "";
       for (const k of FORN_KEYS) {
         const v = parseFloat(item[k]) || 0;
@@ -2805,8 +2807,8 @@ function resultRow(label, val, valClass, isCost) {
 }
 
 // ── Upload — constantes ───────────────────────────────────────────────────────
-const DIST_KEYS_UP   = ["integralmed","viveo","ciamed","pl","santa_cruz","santa_rita","gam","pontual","agille","unimed","medlive","onco"];
-const DIST_LABELS_UP = ["INTEGRALMED","VIVEO","CIAMED","PL","SANTA CRUZ","SANTA RITA","GAM","PONTUAL","AGILLE","UNIMED","MEDLIVE","ONCO"];
+const DIST_KEYS_UP   = ["integralmed","viveo","ciamed","pl","santa_cruz","santa_rita","gam","pontual","agille","unimed","medlive","onco","trespharma","justmed"];
+const DIST_LABELS_UP = ["INTEGRALMED","VIVEO","CIAMED","PL","SANTA CRUZ","SANTA RITA","GAM","PONTUAL","AGILLE","UNIMED","MEDLIVE","ONCO","TRESPHARMA","JUSTMED"];
 
 // Mapa FORNECEDOR → chave do banco (inclui nomes antigos/alternativos)
 const FORN_MAP = {
@@ -2822,6 +2824,8 @@ const FORN_MAP = {
   UNIMED:"unimed", CRISTAL:"unimed",
   MEDLIVE:"medlive",
   ONCO:"onco",
+  TRESPHARMA:"trespharma", TRES:"trespharma",
+  JUSTMED:"justmed",
 };
 // Resolve fornecedor com fallback por prefixo
 function resolveForn(raw) {
@@ -3413,7 +3417,7 @@ function exportCSV() {
   const headers = ["EAN","Produto","Princípio Ativo","Laboratório","Nacionalidade","Tributação",
     ...DIST,"Menor Preço","Melhor Fornecedor"];
   const distKeys = ["integralmed","viveo","ciamed","pl","santa_cruz","santa_rita",
-                    "gam","pontual","agille","unimed","medlive","onco"];
+                    "gam","pontual","agille","unimed","medlive","onco","trespharma","justmed"];
   const rows = [headers, ...filtered.map(r => [
     r.ean||"", r.produto||"", r.principio_ativo||"", r.laboratorio||"",
     r.nacionalidade||"", r.tributacao||"",
@@ -3460,9 +3464,9 @@ function togglePin() {
 
 // ── Cadastro manual ───────────────────────────────────────────────────────────
 const DIST_KEYS_CAD = ["integralmed","viveo","ciamed","pl","santa_cruz","santa_rita",
-                       "gam","pontual","agille","unimed","medlive","onco"];
+                       "gam","pontual","agille","unimed","medlive","onco","trespharma","justmed"];
 const DIST_LABELS_CAD = ["INTEGRALMED","VIVEO","CIAMED","PL","SANTA CRUZ","SANTA RITA",
-                         "GAM","PONTUAL","AGILLE","UNIMED","MEDLIVE","ONCO"];
+                         "GAM","PONTUAL","AGILLE","UNIMED","MEDLIVE","ONCO","TRESPHARMA","JUSTMED"];
 
 // EAN do produto encontrado (modo edição)
 let cadEanExistente = null;
