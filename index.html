@@ -2323,7 +2323,6 @@ async function salvarNovaCotacao() {
 
     // Notificar coletora por e-mail
     await _enviarEmail(EMAILJS_TPL_SOLICITA, {
-      email:       EMAIL_COLETORA,
       to_email:    EMAIL_COLETORA,
       solicitante: solNome,
       ean,
@@ -2440,8 +2439,7 @@ async function confirmarColeta() {
       ? `R$ ${melhorPreco.toLocaleString("pt-BR",{minimumFractionDigits:2})} (${melhorForn})`
       : "Cotação registrada — sem preço disponível";
     await _enviarEmail(EMAILJS_TPL_ATUALIZA, {
-      email:        solEmail,          // campo esperado pelo template EmailJS (To Email = {{email}})
-      to_email:     solEmail,          // mantém compatibilidade
+      to_email:     solEmail,
       solicitante:  cot.solicitante_nome || solEmail,
       ean:          cot.ean      || "—",
       descricao:    cot.descricao || "—",
@@ -2477,7 +2475,6 @@ async function _autoFlagCotacoesPorEAN(ean) {
 
       // E-mail para o solicitante
       await _enviarEmail(EMAILJS_TPL_ATUALIZA, {
-        email:        cot.solicitante_email,
         to_email:     cot.solicitante_email,
         solicitante:  cot.solicitante_nome || cot.solicitante_email,
         ean:          cot.ean      || "—",
