@@ -259,7 +259,13 @@ select.filter-input { min-width: 160px; }
         onkeydown="if(event.key==='Enter')document.getElementById('login-senha').focus()">
     </div>
     <div style="text-align:left;margin-bottom:24px">
-      <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:6px">Senha</label>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <label style="font-size:12px;font-weight:600;color:#374151">Senha</label>
+        <button onclick="abrirRecuperarSenha()" type="button"
+          style="background:none;border:none;font-size:12px;color:#F97316;cursor:pointer;font-weight:500;padding:0">
+          Esqueci minha senha
+        </button>
+      </div>
       <input id="login-senha" type="password" placeholder="••••••••"
         style="width:100%;padding:11px 14px;border:1.5px solid #E5E7EB;border-radius:10px;
         font-size:14px;outline:none;transition:border .15s"
@@ -1730,6 +1736,44 @@ function _atualizarUIUsuario(user) {
   document.getElementById("user-avatar-ini").textContent   = ini;
   document.getElementById("user-nome-display").textContent  = nome;
   document.getElementById("user-email-display").textContent = email;
+}
+
+// ── Recuperação de senha ──────────────────────────────────────────────────
+function abrirRecuperarSenha() {
+  const emailLogin = document.getElementById("login-email").value.trim();
+  document.getElementById("rec-email").value = emailLogin;
+  document.getElementById("rec-erro").style.display = "none";
+  document.getElementById("rec-ok").style.display   = "none";
+  document.getElementById("modal-recuperar-senha").style.display = "flex";
+  setTimeout(() => document.getElementById("rec-email").focus(), 100);
+}
+function fecharRecuperarSenha() {
+  document.getElementById("modal-recuperar-senha").style.display = "none";
+}
+async function enviarRecuperacaoSenha() {
+  const email = document.getElementById("rec-email").value.trim();
+  const erro  = document.getElementById("rec-erro");
+  const ok    = document.getElementById("rec-ok");
+  const btn   = document.getElementById("btn-rec-senha");
+  erro.style.display = "none"; ok.style.display = "none";
+  if (!email) { erro.textContent = "Informe o e-mail."; erro.style.display = "block"; return; }
+  btn.disabled = true; btn.textContent = "Enviando...";
+  try {
+    await _fauth.sendPasswordResetEmail(email);
+    ok.textContent = `✅ Link enviado para ${email}. Verifique sua caixa de entrada (e o spam).`;
+    ok.style.display = "block";
+    btn.textContent = "Enviado!";
+    setTimeout(fecharRecuperarSenha, 4000);
+  } catch(e) {
+    const msgs = {
+      "auth/user-not-found":   "E-mail não encontrado no sistema.",
+      "auth/invalid-email":    "E-mail inválido.",
+      "auth/too-many-requests":"Muitas tentativas. Aguarde alguns minutos.",
+    };
+    erro.textContent = msgs[e.code] || "Erro: " + e.message;
+    erro.style.display = "block";
+    btn.disabled = false; btn.textContent = "Enviar link";
+  }
 }
 
 // ── Primeiro Acesso — Reset de senha obrigatório ──────────────────────────
@@ -5538,6 +5582,34 @@ init();
 
 <!-- Input oculto para importar edital no detalhe do pregão -->
 <input type="file" id="det-edital-input" accept=".pdf,.xlsx,.xls,.csv" style="display:none" onchange="onEditalFileChange(event)">
+
+<!-- Modal: Recuperar Senha -->
+<div id="modal-recuperar-senha" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;align-items:center;justify-content:center;padding:20px">
+  <div style="background:#fff;border-radius:18px;padding:40px 36px;max-width:400px;width:100%;box-shadow:0 24px 60px rgba(0,0,0,.3);text-align:center">
+    <div style="width:56px;height:56px;background:#FFF7ED;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:26px">📧</div>
+    <h2 style="font-size:19px;font-weight:700;color:#1A1A2E;margin-bottom:8px">Recuperar senha</h2>
+    <p style="font-size:13px;color:#6B7280;margin-bottom:24px">Digite seu e-mail e enviaremos um link para você criar uma nova senha.</p>
+    <div id="rec-erro" style="display:none;background:#fee2e2;color:#b91c1c;border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:14px;text-align:left"></div>
+    <div id="rec-ok" style="display:none;background:#D1FAE5;color:#065F46;border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:14px;text-align:left"></div>
+    <div style="text-align:left;margin-bottom:20px">
+      <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:6px">E-mail</label>
+      <input id="rec-email" type="email" placeholder="seu@eualiria.com.br"
+        style="width:100%;padding:11px 14px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:14px;outline:none;transition:border .15s"
+        onfocus="this.style.borderColor='#F97316'" onblur="this.style.borderColor='#E5E7EB'"
+        onkeydown="if(event.key==='Enter')enviarRecuperacaoSenha()">
+    </div>
+    <div style="display:flex;gap:10px">
+      <button onclick="fecharRecuperarSenha()"
+        style="flex:1;padding:11px;background:#F3F4F6;color:#374151;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer">
+        Cancelar
+      </button>
+      <button onclick="enviarRecuperacaoSenha()" id="btn-rec-senha"
+        style="flex:1;padding:11px;background:#F97316;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer">
+        Enviar link
+      </button>
+    </div>
+  </div>
+</div>
 
 <!-- Modal: Primeiro Acesso — Reset de Senha -->
 <div id="modal-primeiro-acesso" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:99999;align-items:center;justify-content:center;padding:20px">
