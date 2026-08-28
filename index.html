@@ -1121,7 +1121,19 @@ select.filter-input { min-width: 160px; }
           </div>
 
           <div class="card">
-            <h2 style="margin-bottom:20px;font-size:15px">Preços por Fornecedor <span style="font-size:12px;font-weight:400;color:var(--muted)">(opcional)</span></h2>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+              <h2 style="margin:0;font-size:15px">Preços por Fornecedor <span style="font-size:12px;font-weight:400;color:var(--muted)">(opcional)</span></h2>
+              <div style="display:flex;gap:6px">
+                <button type="button" onclick="marcarTodosIndisponivel('cad-')"
+                  style="font-size:11px;padding:3px 10px;border:1px solid #fca5a5;background:#fee2e2;color:#b91c1c;border-radius:6px;cursor:pointer;white-space:nowrap">
+                  ✕ Todos Indisponível
+                </button>
+                <button type="button" onclick="desmarcarTodosIndisponivel('cad-')"
+                  style="font-size:11px;padding:3px 10px;border:1px solid #d1d5db;background:#f9fafb;color:#374151;border-radius:6px;cursor:pointer;white-space:nowrap">
+                  ↺ Limpar
+                </button>
+              </div>
+            </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px" id="cad-fornecedores-grid">
               <!-- gerado por _renderCadFornGrid() ao carregar -->
             </div>
@@ -2311,6 +2323,7 @@ async function salvarNovaCotacao() {
 
     // Notificar coletora por e-mail
     await _enviarEmail(EMAILJS_TPL_SOLICITA, {
+      email:       EMAIL_COLETORA,
       to_email:    EMAIL_COLETORA,
       solicitante: solNome,
       ean,
@@ -2359,14 +2372,14 @@ async function confirmarColeta() {
     const inp   = document.getElementById("mcol-" + k);
     if (cbInd && cbInd.checked) {
       indisp[k] = true;
-      prices[k] = null;
+      // Não coloca null no prices — só marcamos no indisp
     } else if (inp) {
       const v = parseFloat(inp.value) || null;
-      prices[k] = v && v > 0 ? v : null;
-      if (prices[k]) {
+      if (v && v > 0) {
+        prices[k] = v;
         algumPreco = true;
-        if (melhorPreco === null || prices[k] < melhorPreco) {
-          melhorPreco = prices[k];
+        if (melhorPreco === null || v < melhorPreco) {
+          melhorPreco = v;
           melhorForn  = DIST_LABELS_CAD[i];
         }
       }
@@ -2374,7 +2387,10 @@ async function confirmarColeta() {
   });
 
   const algumMarcado = algumPreco || Object.keys(indisp).length > 0;
-  if (!algumMarcado) { toast("Informe ao menos um preço ou marque 'Indisponível' para algum fornecedor.", "error"); return; }
+  if (!algumMarcado) {
+    toast("Informe ao menos um preço ou marque Indisponível para algum fornecedor.", "error");
+    return;
+  }
 
   try {
     const agora = new Date().toISOString();
@@ -2401,7 +2417,9 @@ async function confirmarColeta() {
         DIST_KEYS_CAD.forEach(k => {
           if (prices[k] !== undefined || indisp[k]) tsAtual[k] = agora;
         });
-        const pcUpd = { ...prices, updated_at: agora, precos_ts: tsAtual };
+        const pcUpd = { updated_at: agora, precos_ts: tsAtual };
+        // Só atualiza campos com preço real (não espalha nulls)
+        Object.entries(prices).forEach(([k,v]) => { if (v != null) pcUpd[k] = v; });
         if (Object.keys(indisp).length) {
           pcUpd.indisponivel = { ...(pcItems[0].indisponivel || {}), ...indisp };
         }
@@ -2422,7 +2440,8 @@ async function confirmarColeta() {
       ? `R$ ${melhorPreco.toLocaleString("pt-BR",{minimumFractionDigits:2})} (${melhorForn})`
       : "Cotação registrada — sem preço disponível";
     await _enviarEmail(EMAILJS_TPL_ATUALIZA, {
-      to_email:     solEmail,
+      email:        solEmail,          // campo esperado pelo template EmailJS (To Email = {{email}})
+      to_email:     solEmail,          // mantém compatibilidade
       solicitante:  cot.solicitante_nome || solEmail,
       ean:          cot.ean      || "—",
       descricao:    cot.descricao || "—",
@@ -2458,6 +2477,7 @@ async function _autoFlagCotacoesPorEAN(ean) {
 
       // E-mail para o solicitante
       await _enviarEmail(EMAILJS_TPL_ATUALIZA, {
+        email:        cot.solicitante_email,
         to_email:     cot.solicitante_email,
         solicitante:  cot.solicitante_nome || cot.solicitante_email,
         ean:          cot.ean      || "—",
@@ -3806,6 +3826,19 @@ function _renderMcolGrid() {
   grid.innerHTML = DIST_KEYS_CAD.map((k,i) => _fornFieldHtml("mcol-",k,DIST_LABELS_CAD[i])).join("");
 }
 
+function marcarTodosIndisponivel(prefix) {
+  DIST_KEYS_CAD.forEach(k => {
+    const cb = document.getElementById(prefix + k + "-ind");
+    if (cb && !cb.checked) { cb.checked = true; toggleIndisponivel(prefix, k, true); }
+  });
+}
+function desmarcarTodosIndisponivel(prefix) {
+  DIST_KEYS_CAD.forEach(k => {
+    const cb = document.getElementById(prefix + k + "-ind");
+    if (cb && cb.checked) { cb.checked = false; toggleIndisponivel(prefix, k, false); }
+  });
+}
+
 function toggleIndisponivel(prefix, key, isInd) {
   const inp = document.getElementById(prefix + key);
   if (!inp) return;
@@ -3877,13 +3910,20 @@ async function salvarCadastro() {
   let menor = null, melhor = null;
   DIST_KEYS_CAD.forEach((k, i) => {
     const cb = document.getElementById("cad-" + k + "-ind");
-    if (cb && cb.checked) { indisponivel[k] = true; prices[k] = null; precos_ts[k] = agora; return; }
+    if (cb && cb.checked) {
+      indisponivel[k] = true;
+      // Não inclui null no prices — marcamos só no indisponivel
+      precos_ts[k] = agora;
+      return;
+    }
     const v = parseFloat(document.getElementById("cad-" + k).value) || null;
-    prices[k] = v && v > 0 ? v : null;
-    if (prices[k]) { precos_ts[k] = agora; }
-    else if (tsBase[k]) { precos_ts[k] = tsBase[k]; } // mantém ts anterior se não alterou
-    if (prices[k] && (menor === null || prices[k] < menor)) {
-      menor = prices[k]; melhor = DIST_LABELS_CAD[i];
+    if (v && v > 0) {
+      prices[k] = v;
+      precos_ts[k] = agora;
+      if (menor === null || v < menor) { menor = v; melhor = DIST_LABELS_CAD[i]; }
+    } else {
+      // Campo vazio: mantém valor/timestamp anteriores
+      if (tsBase[k]) precos_ts[k] = tsBase[k];
     }
   });
 
@@ -5859,7 +5899,19 @@ init();
       <div style="font-weight:600" id="mcol-desc">—</div>
       <div style="color:var(--muted);margin-top:2px" id="mcol-ean">—</div>
     </div>
-    <div style="font-size:13px;font-weight:600;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.4px">Preços por Fornecedor</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div style="font-size:13px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Preços por Fornecedor</div>
+      <div style="display:flex;gap:6px">
+        <button type="button" onclick="marcarTodosIndisponivel('mcol-')"
+          style="font-size:11px;padding:3px 10px;border:1px solid #fca5a5;background:#fee2e2;color:#b91c1c;border-radius:6px;cursor:pointer;white-space:nowrap">
+          ✕ Todos Indisponível
+        </button>
+        <button type="button" onclick="desmarcarTodosIndisponivel('mcol-')"
+          style="font-size:11px;padding:3px 10px;border:1px solid #d1d5db;background:#f9fafb;color:#374151;border-radius:6px;cursor:pointer;white-space:nowrap">
+          ↺ Limpar
+        </button>
+      </div>
+    </div>
     <div style="max-height:52vh;overflow-y:auto;padding-right:4px">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px" id="mcol-fornecedores-grid">
         <!-- gerado por _renderMcolGrid() -->
