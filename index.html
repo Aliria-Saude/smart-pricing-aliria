@@ -2393,10 +2393,15 @@ async function confirmarColeta() {
 
     // ── Sincronizar precos_compra ────────────────────────────────────────────
     if (eanVal) {
-      const { data: pcItems } = await db.from("precos_compra").select("id,indisponivel").eq("ean", eanVal);
+      const { data: pcItems } = await db.from("precos_compra").select("id,indisponivel,precos_ts").eq("ean", eanVal);
       if (pcItems && pcItems.length > 0) {
-        const pcId   = pcItems[0].id;
-        const pcUpd  = { ...prices, updated_at: agora };
+        const pcId  = pcItems[0].id;
+        // Atualiza timestamps por fornecedor (somente os que têm preço ou indisponível)
+        const tsAtual = { ...(pcItems[0].precos_ts || {}) };
+        DIST_KEYS_CAD.forEach(k => {
+          if (prices[k] !== undefined || indisp[k]) tsAtual[k] = agora;
+        });
+        const pcUpd = { ...prices, updated_at: agora, precos_ts: tsAtual };
         if (Object.keys(indisp).length) {
           pcUpd.indisponivel = { ...(pcItems[0].indisponivel || {}), ...indisp };
         }
@@ -2674,11 +2679,24 @@ function renderPage() {
       ? `<span class="td-regime regime-isento">ISENTO</span>`
       : `<span class="td-regime regime-tributado">TRIBUTADO</span>`;
 
+    const ts = r.precos_ts || {};
     const prices = DIST.map(d => {
       const key = d.toLowerCase().replace(/ /g,"_").replace(".","");
       const v = r[key] || r[d] || r[d.toLowerCase()];
       const disp = v && v > 0 ? fmtBRL(v) : "—";
-      return `<td class="td-price" style="cursor:pointer" title="Clique para editar" onclick="editPriceCell(this,'${r.id}','${key}',${v||0})">${disp}</td>`;
+      // Cor por tempo desde última coleta deste fornecedor
+      let cellStyle = "cursor:pointer";
+      const tsForn = ts[key];
+      if (tsForn) {
+        const dias = Math.floor((Date.now() - new Date(tsForn)) / 86400000);
+        if (dias <= 60)      cellStyle += ";background:#dcfce7;color:#15803d";
+        else if (dias <= 90) cellStyle += ";background:#fef9c3;color:#92400e";
+        else                 cellStyle += ";background:#fee2e2;color:#b91c1c";
+      }
+      const titleTxt = tsForn
+        ? `Clique para editar · Coletado ${Math.floor((Date.now()-new Date(tsForn))/86400000)}d atrás`
+        : "Clique para editar · Sem data de coleta";
+      return `<td class="td-price" style="${cellStyle}" title="${titleTxt}" onclick="editPriceCell(this,'${r.id}','${key}',${v||0})">${disp}</td>`;
     }).join("");
 
     return `<tr>
@@ -2767,7 +2785,12 @@ function editPriceCell(td, rowId, field, valorAtual) {
 
     // Salva no Supabase
     try {
-      const upd = { [field]: novoVal, updated_at: new Date().toISOString() };
+      const agora = new Date().toISOString();
+      // Atualiza precos_ts para este fornecedor
+      const tsAtual = (item && item.precos_ts) ? { ...item.precos_ts } : {};
+      tsAtual[field] = agora;
+      if (item) item.precos_ts = tsAtual;
+      const upd = { [field]: novoVal, updated_at: agora, precos_ts: tsAtual };
       if (item) { upd.menor_preco = item.menor_preco; upd.melhor_fornecedor = item.melhor_fornecedor; }
       await db.from("precos_compra").update(upd).eq("id", rowId);
       // Auditoria
@@ -3847,13 +3870,18 @@ async function salvarCadastro() {
   const pa      = document.getElementById("cad-pa").value.trim().toLowerCase();
   const ean     = document.getElementById("cad-ean").value.trim() || null;
 
-  const prices = {}, indisponivel = {};
+  const prices = {}, indisponivel = {}, precos_ts = {};
+  const agora = new Date().toISOString();
+  // Mantém timestamps anteriores se for atualização
+  const tsBase = (cadEanExistente && cadEanExistente.precos_ts) ? { ...cadEanExistente.precos_ts } : {};
   let menor = null, melhor = null;
   DIST_KEYS_CAD.forEach((k, i) => {
     const cb = document.getElementById("cad-" + k + "-ind");
-    if (cb && cb.checked) { indisponivel[k] = true; prices[k] = null; return; }
+    if (cb && cb.checked) { indisponivel[k] = true; prices[k] = null; precos_ts[k] = agora; return; }
     const v = parseFloat(document.getElementById("cad-" + k).value) || null;
     prices[k] = v && v > 0 ? v : null;
+    if (prices[k]) { precos_ts[k] = agora; }
+    else if (tsBase[k]) { precos_ts[k] = tsBase[k]; } // mantém ts anterior se não alterou
     if (prices[k] && (menor === null || prices[k] < menor)) {
       menor = prices[k]; melhor = DIST_LABELS_CAD[i];
     }
@@ -3867,9 +3895,10 @@ async function salvarCadastro() {
     tributacao:   document.getElementById("cad-trib").value || null,
     ...prices,
     indisponivel: Object.keys(indisponivel).length ? indisponivel : null,
+    precos_ts:    Object.keys(precos_ts).length ? precos_ts : null,
     menor_preco: menor, melhor_fornecedor: melhor,
-    data_cotacao: new Date().toISOString().split("T")[0],
-    updated_at:   new Date().toISOString(),
+    data_cotacao: agora.split("T")[0],
+    updated_at:   agora,
   };
 
   // ── Modo ATUALIZAÇÃO (EAN já existe) ──
