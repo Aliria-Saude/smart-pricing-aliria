@@ -1122,21 +1122,8 @@ select.filter-input { min-width: 160px; }
 
           <div class="card">
             <h2 style="margin-bottom:20px;font-size:15px">Preços por Fornecedor <span style="font-size:12px;font-weight:400;color:var(--muted)">(opcional)</span></h2>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-              <div class="sim-field"><div class="sim-label">INTEGRALMED</div><input class="sim-input" type="number" id="cad-integralmed" placeholder="R$" min="0" step="0.01"></div>
-              <div class="sim-field"><div class="sim-label">VIVEO</div><input class="sim-input" type="number" id="cad-viveo" placeholder="R$" min="0" step="0.01"></div>
-              <div class="sim-field"><div class="sim-label">CIAMED</div><input class="sim-input" type="number" id="cad-ciamed" placeholder="R$" min="0" step="0.01"></div>
-              <div class="sim-field"><div class="sim-label">PL</div><input class="sim-input" type="number" id="cad-pl" placeholder="R$" min="0" step="0.01"></div>
-              <div class="sim-field"><div class="sim-label">SANTA CRUZ</div><input class="sim-input" type="number" id="cad-santa_cruz" placeholder="R$" min="0" step="0.01"></div>
-              <div class="sim-field"><div class="sim-label">SANTA RITA</div><input class="sim-input" type="number" id="cad-santa_rita" placeholder="R$" min="0" step="0.01"></div>
-              <div class="sim-field"><div class="sim-label">GAM</div><input class="sim-input" type="number" id="cad-gam" placeholder="R$" min="0" step="0.01"></div>
-              <div class="sim-field"><div class="sim-label">PONTUAL</div><input class="sim-input" type="number" id="cad-pontual" placeholder="R$" min="0" step="0.01"></div>
-              <div class="sim-field"><div class="sim-label">AGILLE</div><input class="sim-input" type="number" id="cad-agille" placeholder="R$" min="0" step="0.01"></div>
-              <div class="sim-field"><div class="sim-label">UNIMED</div><input class="sim-input" type="number" id="cad-unimed" placeholder="R$" min="0" step="0.01"></div>
-              <div class="sim-field"><div class="sim-label">MEDLIVE</div><input class="sim-input" type="number" id="cad-medlive" placeholder="R$" min="0" step="0.01"></div>
-              <div class="sim-field"><div class="sim-label">ONCO</div><input class="sim-input" type="number" id="cad-onco" placeholder="R$" min="0" step="0.01"></div>
-              <div class="sim-field"><div class="sim-label">TRESPHARMA</div><input class="sim-input" type="number" id="cad-trespharma" placeholder="R$" min="0" step="0.01"></div>
-              <div class="sim-field"><div class="sim-label">JUSTMED</div><input class="sim-input" type="number" id="cad-justmed" placeholder="R$" min="0" step="0.01"></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px" id="cad-fornecedores-grid">
+              <!-- gerado por _renderCadFornGrid() ao carregar -->
             </div>
           </div>
 
@@ -1723,6 +1710,7 @@ async function _initApp() {
   }
   initDropZones();
   renderOrcRows();
+  _renderCadFornGrid();
   await loadData();
 }
 
@@ -2344,58 +2332,97 @@ async function salvarNovaCotacao() {
 
 // ── Cotações — Coletar Preço ──────────────────────────────────────────────────
 function abrirModalColetar(id, desc, ean, solEmail) {
-  document.getElementById("mcol-id").value       = id;
+  document.getElementById("mcol-id").value        = id;
   document.getElementById("mcol-sol-email").value = solEmail;
+  document.getElementById("mcol-ean-val").value   = ean || "";
   document.getElementById("mcol-desc").textContent = desc;
-  document.getElementById("mcol-ean").textContent  = "EAN: " + ean;
-  document.getElementById("mcol-preco").value = "";
-  document.getElementById("mcol-obs").value   = "";
-  document.getElementById("mcol-fornecedor").value = "";
-  document.getElementById("mcol-qtd-cx").value = "1";
+  document.getElementById("mcol-ean").textContent  = ean ? "EAN: " + ean : "";
+  document.getElementById("mcol-obs").value = "";
+  _renderMcolGrid();
   document.getElementById("modal-coletar").style.display = "flex";
-  setTimeout(() => document.getElementById("mcol-fornecedor").focus(), 100);
 }
 function fecharModalColetar() {
   document.getElementById("modal-coletar").style.display = "none";
 }
 
 async function confirmarColeta() {
-  const id        = document.getElementById("mcol-id").value;
-  const solEmail  = document.getElementById("mcol-sol-email").value;
-  const fornecedor = document.getElementById("mcol-fornecedor").value.trim();
-  const preco     = parseFloat(document.getElementById("mcol-preco").value) || 0;
-  const qtdCx     = parseInt(document.getElementById("mcol-qtd-cx").value) || 1;
-  const obs       = document.getElementById("mcol-obs").value.trim();
+  const id       = document.getElementById("mcol-id").value;
+  const solEmail = document.getElementById("mcol-sol-email").value;
+  const eanVal   = document.getElementById("mcol-ean-val").value;
+  const obs      = document.getElementById("mcol-obs").value.trim();
 
-  if (!fornecedor) { toast("Selecione o fornecedor.", "error"); return; }
-  if (!preco)      { toast("Informe o preço coletado.", "error"); return; }
+  // Coleta preços e flags de todos os fornecedores
+  const prices = {}, indisp = {};
+  let algumPreco = false, melhorPreco = null, melhorForn = null;
+  DIST_KEYS_CAD.forEach((k, i) => {
+    const cbInd = document.getElementById("mcol-" + k + "-ind");
+    const inp   = document.getElementById("mcol-" + k);
+    if (cbInd && cbInd.checked) {
+      indisp[k] = true;
+      prices[k] = null;
+    } else if (inp) {
+      const v = parseFloat(inp.value) || null;
+      prices[k] = v && v > 0 ? v : null;
+      if (prices[k]) {
+        algumPreco = true;
+        if (melhorPreco === null || prices[k] < melhorPreco) {
+          melhorPreco = prices[k];
+          melhorForn  = DIST_LABELS_CAD[i];
+        }
+      }
+    }
+  });
+
+  const algumMarcado = algumPreco || Object.keys(indisp).length > 0;
+  if (!algumMarcado) { toast("Informe ao menos um preço ou marque 'Indisponível' para algum fornecedor.", "error"); return; }
 
   try {
+    const agora = new Date().toISOString();
     const upd = {
       status:          "coletada",
-      preco_coletado:  preco,
-      fornecedor_col:  fornecedor,
-      qtd_cx_col:      qtdCx,
+      precos_coletados: prices,
+      indisponivel_col: Object.keys(indisp).length ? indisp : null,
+      preco_coletado:  melhorPreco,
+      fornecedor_col:  melhorForn,
       coletado_por:    _currentUser.email,
       coletado_obs:    obs || null,
-      coletado_em:     new Date().toISOString(),
+      coletado_em:     agora,
     };
     const { error } = await db.from("cotacoes").update(upd).eq("id", id);
     if (error) throw error;
 
-    // Atualiza localmente
+    // ── Sincronizar precos_compra ────────────────────────────────────────────
+    if (eanVal) {
+      const { data: pcItems } = await db.from("precos_compra").select("id,indisponivel").eq("ean", eanVal);
+      if (pcItems && pcItems.length > 0) {
+        const pcId   = pcItems[0].id;
+        const pcUpd  = { ...prices, updated_at: agora };
+        if (Object.keys(indisp).length) {
+          pcUpd.indisponivel = { ...(pcItems[0].indisponivel || {}), ...indisp };
+        }
+        if (melhorPreco) { pcUpd.menor_preco = melhorPreco; pcUpd.melhor_fornecedor = melhorForn; }
+        await db.from("precos_compra").update(pcUpd).eq("id", pcId);
+        // Recarrega dados locais
+        await loadData();
+      }
+    }
+
+    // Atualiza localmente na lista de cotações
     const idx = _cotData.findIndex(r => r.id === id);
     if (idx >= 0) Object.assign(_cotData[idx], upd);
 
     // Notificar solicitante
     const cot = _cotData[idx] || {};
+    const precoStr = melhorPreco
+      ? `R$ ${melhorPreco.toLocaleString("pt-BR",{minimumFractionDigits:2})} (${melhorForn})`
+      : "Cotação registrada — sem preço disponível";
     await _enviarEmail(EMAILJS_TPL_ATUALIZA, {
       to_email:     solEmail,
       solicitante:  cot.solicitante_nome || solEmail,
       ean:          cot.ean      || "—",
       descricao:    cot.descricao || "—",
-      preco:        `R$ ${preco.toLocaleString("pt-BR",{minimumFractionDigits:2})}`,
-      fornecedor:   fornecedor,
+      preco:        precoStr,
+      fornecedor:   melhorForn || "Vários fornecedores",
       coletado_por: _currentUser.email,
       data:         new Date().toLocaleDateString("pt-BR"),
     });
@@ -3654,10 +3681,16 @@ async function buscarPorEan() {
     document.getElementById("cad-nac").value   = found.nacionalidade   || "";
     document.getElementById("cad-trib").value  = found.tributacao      || "";
 
+    const indObj = found.indisponivel || {};
     DIST_KEYS_CAD.forEach(k => {
       const el = document.getElementById("cad-" + k);
-      const v  = found[k];
-      if (el) el.value = (v != null && v > 0) ? v : "";
+      const cb = document.getElementById("cad-" + k + "-ind");
+      const isInd = indObj[k] === true;
+      if (cb) cb.checked = isInd;
+      if (el) {
+        toggleIndisponivel("cad-", k, isInd);
+        if (!isInd) { const v = found[k]; el.value = (v != null && v > 0) ? v : ""; }
+      }
     });
 
     ocultarBannersCad();
@@ -3724,6 +3757,45 @@ async function buscarPorEan() {
 }
 
 /* Limpa o formulário e volta ao modo novo cadastro */
+// ── Fornecedor grid helpers ────────────────────────────────────────────────────
+function _fornFieldHtml(prefix, key, label) {
+  return `<div class="sim-field">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+      <div class="sim-label" style="margin-bottom:0">${label}</div>
+      <label style="font-size:11px;color:var(--muted);display:flex;align-items:center;gap:4px;cursor:pointer;white-space:nowrap">
+        <input type="checkbox" id="${prefix}${key}-ind" onchange="toggleIndisponivel('${prefix}','${key}',this.checked)"
+          style="accent-color:#dc2626;width:12px;height:12px"> Indisponível
+      </label>
+    </div>
+    <input class="sim-input" type="number" id="${prefix}${key}" placeholder="R$" min="0" step="0.01">
+  </div>`;
+}
+
+function _renderCadFornGrid() {
+  const grid = document.getElementById("cad-fornecedores-grid");
+  if (!grid) return;
+  grid.innerHTML = DIST_KEYS_CAD.map((k,i) => _fornFieldHtml("cad-",k,DIST_LABELS_CAD[i])).join("");
+}
+
+function _renderMcolGrid() {
+  const grid = document.getElementById("mcol-fornecedores-grid");
+  if (!grid) return;
+  grid.innerHTML = DIST_KEYS_CAD.map((k,i) => _fornFieldHtml("mcol-",k,DIST_LABELS_CAD[i])).join("");
+}
+
+function toggleIndisponivel(prefix, key, isInd) {
+  const inp = document.getElementById(prefix + key);
+  if (!inp) return;
+  if (isInd) {
+    inp.value = ""; inp.disabled = true;
+    inp.style.background = "var(--bg,#f9fafb)"; inp.style.color = "#9ca3af";
+    inp.placeholder = "Indisponível";
+  } else {
+    inp.disabled = false; inp.style.background = ""; inp.style.color = "";
+    inp.placeholder = "R$";
+  }
+}
+
 // ── Modal Novo Item (move page-cadastro content into modal) ────────────────────
 function abrirModalNovoItem() {
   const pageCad   = document.getElementById("page-cadastro");
@@ -3758,7 +3830,12 @@ function limparCadastro() {
     .forEach(id => document.getElementById(id).value = "");
   document.getElementById("cad-nac").value  = "";
   document.getElementById("cad-trib").value = "";
-  DIST_KEYS_CAD.forEach(k => { document.getElementById("cad-" + k).value = ""; });
+  DIST_KEYS_CAD.forEach(k => {
+    const inp = document.getElementById("cad-" + k);
+    const cb  = document.getElementById("cad-" + k + "-ind");
+    if (inp) { inp.value = ""; inp.disabled = false; inp.style.background = ""; inp.placeholder = "R$"; }
+    if (cb)  { cb.checked = false; }
+  });
 }
 
 async function salvarCadastro() {
@@ -3770,9 +3847,11 @@ async function salvarCadastro() {
   const pa      = document.getElementById("cad-pa").value.trim().toLowerCase();
   const ean     = document.getElementById("cad-ean").value.trim() || null;
 
-  const prices = {};
+  const prices = {}, indisponivel = {};
   let menor = null, melhor = null;
   DIST_KEYS_CAD.forEach((k, i) => {
+    const cb = document.getElementById("cad-" + k + "-ind");
+    if (cb && cb.checked) { indisponivel[k] = true; prices[k] = null; return; }
     const v = parseFloat(document.getElementById("cad-" + k).value) || null;
     prices[k] = v && v > 0 ? v : null;
     if (prices[k] && (menor === null || prices[k] < menor)) {
@@ -3787,6 +3866,7 @@ async function salvarCadastro() {
     nacionalidade:document.getElementById("cad-nac").value || null,
     tributacao:   document.getElementById("cad-trib").value || null,
     ...prices,
+    indisponivel: Object.keys(indisponivel).length ? indisponivel : null,
     menor_preco: menor, melhor_fornecedor: melhor,
     data_cotacao: new Date().toISOString().split("T")[0],
     updated_at:   new Date().toISOString(),
@@ -5744,36 +5824,21 @@ init();
     </div>
     <input type="hidden" id="mcol-id">
     <input type="hidden" id="mcol-sol-email">
+    <input type="hidden" id="mcol-ean-val">
     <div style="background:#F9FAFB;border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:13px">
       <div style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Item solicitado</div>
       <div style="font-weight:600" id="mcol-desc">—</div>
       <div style="color:var(--muted);margin-top:2px" id="mcol-ean">—</div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-      <div class="sim-field" style="grid-column:1/-1">
-        <div class="sim-label">Fornecedor *</div>
-        <select class="sim-input sim-select" id="mcol-fornecedor">
-          <option value="">Selecione o fornecedor...</option>
-          <option>INTEGRALMED</option><option>VIVEO</option><option>CIAMED</option>
-          <option>PL</option><option>SANTA CRUZ</option><option>SANTA RITA</option>
-          <option>GAM</option><option>PONTUAL</option><option>AGILLE</option>
-          <option>UNIMED</option><option>MEDLIVE</option><option>ONCO</option>
-          <option>TRESPHARMA</option><option>JUSTMED</option>
-          <option>OUTRO</option>
-        </select>
+    <div style="font-size:13px;font-weight:600;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.4px">Preços por Fornecedor</div>
+    <div style="max-height:52vh;overflow-y:auto;padding-right:4px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px" id="mcol-fornecedores-grid">
+        <!-- gerado por _renderMcolGrid() -->
       </div>
-      <div class="sim-field">
-        <div class="sim-label">Preço por Caixa (R$) *</div>
-        <input class="sim-input" id="mcol-preco" type="number" step="0.01" min="0" placeholder="0,00">
-      </div>
-      <div class="sim-field">
-        <div class="sim-label">Qtd. por Caixa</div>
-        <input class="sim-input" id="mcol-qtd-cx" type="number" min="1" step="1" placeholder="1" value="1">
-      </div>
-      <div class="sim-field" style="grid-column:1/-1">
-        <div class="sim-label">Observação (opcional)</div>
-        <input class="sim-input" id="mcol-obs" placeholder="Validade da cotação, condições, etc.">
-      </div>
+    </div>
+    <div class="sim-field" style="margin-top:14px">
+      <div class="sim-label">Observação (opcional)</div>
+      <input class="sim-input" id="mcol-obs" placeholder="Validade da cotação, condições especiais, etc.">
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
       <button class="btn btn-secondary" onclick="fecharModalColetar()">Cancelar</button>
