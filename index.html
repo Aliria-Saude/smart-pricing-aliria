@@ -316,12 +316,6 @@ select.filter-input { min-width: 160px; }
           <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/>
           <line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/>
         </svg>
-        <span>Preços de Compra</span>
-      </div>
-      <div class="nav-item" onclick="goto('cadastro')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
-        </svg>
         <span>Cadastro</span>
       </div>
       <div class="nav-item" onclick="goto('simulacao')">
@@ -568,6 +562,10 @@ select.filter-input { min-width: 160px; }
         <div class="card">
           <div class="sec-hd">
             <h2 id="table-count">Carregando...</h2>
+            <button class="btn btn-primary" onclick="abrirModalNovoItem()">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Incluir novo item
+            </button>
           </div>
           <div class="table-wrap">
             <table>
@@ -1632,8 +1630,7 @@ const _dbAdapter = {
 const PAGES = {
   dashboard:             { title: "Dashboard",              sub: "Visão geral dos preços de compra e simulações" },
   cotacoes:              { title: "Cotações",               sub: "Solicitações de pesquisa de preço no mercado" },
-  precos:                { title: "Preços de Compra",       sub: "Base consolidada por fornecedor" },
-  cadastro:              { title: "Cadastro",               sub: "Inclua itens manualmente no sistema" },
+  precos:                { title: "Cadastro",               sub: "Base consolidada de preços por fornecedor" },
   simulacao:             { title: "Simulação",              sub: "Calcule a margem pelo preço de venda" },
   orcamento:             { title: "Orçamento",              sub: "Gere orçamentos de medicamentos em PDF para pacientes" },
   licitacoes:            { title: "Licitações",             sub: "Simule pregões e acompanhe sua participação" },
@@ -2135,13 +2132,27 @@ async function initCotacoes() {
 function _atualizarKpiCotacoes() {
   const validos  = _cotData.filter(r => r && r.status);
   const total    = validos.length;
-  const pendente = validos.filter(r => r.status === "pendente").length;
+  const pendente = validos.filter(r => r.status === "pendente" || r.status === "andamento").length;
   const coletada = validos.filter(r => r.status === "coletada").length;
   const atualiza = validos.filter(r => r.status === "atualizada").length;
   document.getElementById("cot-kpi-total").textContent     = total;
   document.getElementById("cot-kpi-pendente").textContent  = pendente;
   document.getElementById("cot-kpi-coletada").textContent  = coletada;
   document.getElementById("cot-kpi-atualizada").textContent= atualiza;
+}
+
+async function alterarStatusCotacao(id, novoStatus) {
+  try {
+    const { error } = await db.from("cotacoes").update({ status: novoStatus }).eq("id", id);
+    if (error) throw error;
+    const idx = _cotData.findIndex(r => r.id === id);
+    if (idx >= 0) _cotData[idx].status = novoStatus;
+    _atualizarKpiCotacoes();
+    _atualizarBadge();
+  } catch(e) {
+    toast("Erro ao atualizar status: " + e.message, "error");
+    renderCotacoes(); // re-render para reverter o select visualmente
+  }
 }
 
 function _atualizarBadge() {
@@ -2174,27 +2185,29 @@ function renderCotacoes() {
     return;
   }
 
-  const STATUS_MAP = {
-    pendente:   `<span class="cot-status cot-pendente">⏳ Pendente</span>`,
-    coletada:   `<span class="cot-status cot-coletada">🔍 Coletada</span>`,
-    atualizada: `<span class="cot-status cot-atualizada">✅ Atualizada</span>`,
-  };
-
   tbody.innerHTML = _cotFiltered.map(r => {
-    const dt  = new Date(r.created_at);
+    const dt    = new Date(r.created_at);
     const dtStr = dt.toLocaleDateString("pt-BR") + " " + dt.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
-    const status = STATUS_MAP[r.status] || `<span class="cot-status">${escHtml(r.status)}</span>`;
-    const preco  = r.preco_coletado > 0 ? `R$ ${Number(r.preco_coletado).toLocaleString("pt-BR",{minimumFractionDigits:2})}` : "—";
+    const preco = r.preco_coletado > 0 ? `R$ ${Number(r.preco_coletado).toLocaleString("pt-BR",{minimumFractionDigits:2})}` : "—";
     const coletadoPor = r.coletado_por ? escHtml(r.coletado_por.split("@")[0]) : "—";
 
-    // Botões de ação conforme status
+    // Status com dropdown manual (exceto "atualizada" que é automático)
+    const statusSel = r.status === "atualizada"
+      ? `<span class="cot-status cot-atualizada">✅ Atualizada</span>`
+      : `<select onchange="alterarStatusCotacao('${r.id}',this.value)"
+           style="border:1px solid var(--border);border-radius:6px;font-size:12px;padding:4px 8px;cursor:pointer;background:var(--card);color:var(--text)">
+           <option value="pendente"    ${r.status==="pendente"    ?"selected":""}>⏳ Pendente</option>
+           <option value="andamento"   ${r.status==="andamento"   ?"selected":""}>🔄 Em andamento</option>
+           <option value="coletada"    ${r.status==="coletada"    ?"selected":""}>🔍 Coletada</option>
+         </select>`;
+
+    // Botão de ação
     let acoes = "";
-    if (r.status === "pendente") {
-      acoes = `<button class="btn btn-sm" style="background:#DBEAFE;color:#1D4ED8;border:none" onclick="abrirModalColetar('${r.id}','${escHtml(r.descricao||"")}','${escHtml(r.ean||"")}','${escHtml(r.solicitante_email||"")}')">🔍 Coletar</button>`;
-    } else if (r.status === "coletada") {
-      acoes = `<span style="font-size:11px;color:var(--muted)">Aguardando cadastro</span>`;
+    if (r.status !== "atualizada") {
+      acoes = `<button class="btn btn-sm" style="background:#DBEAFE;color:#1D4ED8;border:none"
+        onclick="abrirModalColetar('${r.id}','${escHtml(r.descricao||"")}','${escHtml(r.ean||"")}','${escHtml(r.solicitante_email||"")}')">🔍 Registrar preço</button>`;
     } else {
-      acoes = `<span style="font-size:11px;color:var(--green)">Concluída</span>`;
+      acoes = `<span style="font-size:11px;color:var(--green)">Concluída ✓</span>`;
     }
 
     return `<tr>
@@ -2202,7 +2215,7 @@ function renderCotacoes() {
       <td style="font-size:12px"><div style="font-weight:500">${escHtml(r.solicitante_nome||"—")}</div><div style="color:var(--muted);font-size:11px">${escHtml(r.solicitante_email||"")}</div></td>
       <td style="font-size:12px;font-variant-numeric:tabular-nums">${escHtml(r.ean||"—")}</td>
       <td style="min-width:200px"><div style="font-weight:500">${escHtml(r.descricao||"—")}</div>${r.observacao ? `<div style="font-size:11px;color:var(--muted)">${escHtml(r.observacao)}</div>` : ""}</td>
-      <td>${status}</td>
+      <td>${statusSel}</td>
       <td style="font-size:12px">${coletadoPor}</td>
       <td style="font-size:12px;font-weight:600;font-variant-numeric:tabular-nums">${escHtml(preco)}</td>
       <td>${acoes}</td>
@@ -2337,8 +2350,10 @@ function abrirModalColetar(id, desc, ean, solEmail) {
   document.getElementById("mcol-ean").textContent  = "EAN: " + ean;
   document.getElementById("mcol-preco").value = "";
   document.getElementById("mcol-obs").value   = "";
+  document.getElementById("mcol-fornecedor").value = "";
+  document.getElementById("mcol-qtd-cx").value = "1";
   document.getElementById("modal-coletar").style.display = "flex";
-  setTimeout(() => document.getElementById("mcol-preco").focus(), 100);
+  setTimeout(() => document.getElementById("mcol-fornecedor").focus(), 100);
 }
 function fecharModalColetar() {
   document.getElementById("modal-coletar").style.display = "none";
@@ -2347,18 +2362,23 @@ function fecharModalColetar() {
 async function confirmarColeta() {
   const id        = document.getElementById("mcol-id").value;
   const solEmail  = document.getElementById("mcol-sol-email").value;
+  const fornecedor = document.getElementById("mcol-fornecedor").value.trim();
   const preco     = parseFloat(document.getElementById("mcol-preco").value) || 0;
+  const qtdCx     = parseInt(document.getElementById("mcol-qtd-cx").value) || 1;
   const obs       = document.getElementById("mcol-obs").value.trim();
 
-  if (!preco) { toast("Informe o preço coletado.", "error"); return; }
+  if (!fornecedor) { toast("Selecione o fornecedor.", "error"); return; }
+  if (!preco)      { toast("Informe o preço coletado.", "error"); return; }
 
   try {
     const upd = {
-      status:         "coletada",
-      preco_coletado: preco,
-      coletado_por:   _currentUser.email,
-      coletado_obs:   obs || null,
-      coletado_em:    new Date().toISOString(),
+      status:          "coletada",
+      preco_coletado:  preco,
+      fornecedor_col:  fornecedor,
+      qtd_cx_col:      qtdCx,
+      coletado_por:    _currentUser.email,
+      coletado_obs:    obs || null,
+      coletado_em:     new Date().toISOString(),
     };
     const { error } = await db.from("cotacoes").update(upd).eq("id", id);
     if (error) throw error;
@@ -2375,7 +2395,7 @@ async function confirmarColeta() {
       ean:          cot.ean      || "—",
       descricao:    cot.descricao || "—",
       preco:        `R$ ${preco.toLocaleString("pt-BR",{minimumFractionDigits:2})}`,
-      fornecedor:   obs || "—",
+      fornecedor:   fornecedor,
       coletado_por: _currentUser.email,
       data:         new Date().toLocaleDateString("pt-BR"),
     });
@@ -2652,17 +2672,19 @@ function renderPage() {
           <option value="Não" ${r.portaria_344===false||r.portaria_344==='Não'?'selected':''}>Não</option>
         </select>
       </td>
-      <td style="font-size:11px;color:var(--muted);white-space:nowrap" id="upd-${r.id}">${r.updated_at ? new Date(r.updated_at).toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}) : "—"}</td>
       ${(()=>{
-        if (!r.updated_at) return `<td style="font-size:11px;text-align:center;color:var(--muted)">—</td>`;
+        if (!r.updated_at) return `<td style="font-size:11px;color:var(--muted);white-space:nowrap" id="upd-${r.id}">—</td><td style="text-align:center;color:var(--muted)">—</td>`;
         const dias = Math.floor((Date.now() - new Date(r.updated_at)) / 86400000);
-        const ok = dias <= 45;
-        return `<td style="text-align:center;white-space:nowrap">
+        const dtStr = new Date(r.updated_at).toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit",year:"numeric"});
+        const forn  = r.melhor_fornecedor ? `<div style="font-size:10px;color:var(--muted);margin-top:1px">${escHtml(r.melhor_fornecedor)}</div>` : "";
+        let bg,cor,brd,label;
+        if (dias <= 60)       { bg="#dcfce7"; cor="#15803d"; brd="#86efac"; label="✔ Atualizado"; }
+        else if (dias <= 90)  { bg="#fef9c3"; cor="#92400e"; brd="#fde68a"; label="⚠ 2 meses"; }
+        else                  { bg="#fee2e2"; cor="#b91c1c"; brd="#fca5a5"; label="✖ +3 meses"; }
+        return `<td style="font-size:11px;white-space:nowrap" id="upd-${r.id}"><div>${dtStr}</div>${forn}</td>
+        <td style="text-align:center;white-space:nowrap">
           <span style="display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;
-            background:${ok?'#dcfce7':'#fee2e2'};color:${ok?'#15803d':'#b91c1c'};
-            border:1px solid ${ok?'#86efac':'#fca5a5'}">
-            ${ok?'✔ Atualizado':'✖ Desatualizado'}
-          </span>
+            background:${bg};color:${cor};border:1px solid ${brd}">${label}</span>
         </td>`;
       })()}
     </tr>`;
@@ -3702,6 +3724,31 @@ async function buscarPorEan() {
 }
 
 /* Limpa o formulário e volta ao modo novo cadastro */
+// ── Modal Novo Item (move page-cadastro content into modal) ────────────────────
+function abrirModalNovoItem() {
+  const pageCad   = document.getElementById("page-cadastro");
+  const modalBody = document.getElementById("modal-novo-item-body");
+  // Move the cadastro content into modal body
+  modalBody.innerHTML = "";
+  modalBody.appendChild(pageCad);
+  pageCad.style.display = "block";
+  document.getElementById("modal-novo-item").style.display = "flex";
+  limparCadastro();
+}
+function fecharModalNovoItem() {
+  const pageCad  = document.getElementById("page-cadastro");
+  // Move page-cadastro back to its original parent (.content)
+  const contentWrap = document.querySelector(".content");
+  if (contentWrap && pageCad.parentElement !== contentWrap) {
+    contentWrap.appendChild(pageCad);
+  }
+  pageCad.style.display = "none";
+  document.getElementById("modal-novo-item").style.display = "none";
+  // Reload the table to show any newly added item
+  if (typeof loadPrecos === "function") loadPrecos();
+  else if (typeof initPrecos === "function") initPrecos();
+}
+
 function limparCadastro() {
   cadEanExistente = null;
   ocultarBannersCad();
@@ -3755,6 +3802,7 @@ async function salvarCadastro() {
     toast(`✅ ${produto} atualizado com sucesso!`, "success");
     limparCadastro();
     await loadData();
+    if (document.getElementById("modal-novo-item").style.display !== "none") fecharModalNovoItem();
     return;
   }
 
@@ -3772,6 +3820,10 @@ async function salvarCadastro() {
   toast(`✅ ${produto} cadastrado com sucesso!`, "success");
   limparCadastro();
   await loadData();
+  // Se aberto via modal, fecha o modal
+  if (document.getElementById("modal-novo-item").style.display !== "none") {
+    fecharModalNovoItem();
+  }
 }
 
 // ── Orçamento ─────────────────────────────────────────────────────────────────
@@ -5697,20 +5749,49 @@ init();
       <div style="font-weight:600" id="mcol-desc">—</div>
       <div style="color:var(--muted);margin-top:2px" id="mcol-ean">—</div>
     </div>
-    <div class="sim-field">
-      <div class="sim-label">Melhor Preço Encontrado (R$)</div>
-      <input class="sim-input" id="mcol-preco" type="number" step="0.01" min="0" placeholder="0,00">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div class="sim-field" style="grid-column:1/-1">
+        <div class="sim-label">Fornecedor *</div>
+        <select class="sim-input sim-select" id="mcol-fornecedor">
+          <option value="">Selecione o fornecedor...</option>
+          <option>INTEGRALMED</option><option>VIVEO</option><option>CIAMED</option>
+          <option>PL</option><option>SANTA CRUZ</option><option>SANTA RITA</option>
+          <option>GAM</option><option>PONTUAL</option><option>AGILLE</option>
+          <option>UNIMED</option><option>MEDLIVE</option><option>ONCO</option>
+          <option>TRESPHARMA</option><option>JUSTMED</option>
+          <option>OUTRO</option>
+        </select>
+      </div>
+      <div class="sim-field">
+        <div class="sim-label">Preço por Caixa (R$) *</div>
+        <input class="sim-input" id="mcol-preco" type="number" step="0.01" min="0" placeholder="0,00">
+      </div>
+      <div class="sim-field">
+        <div class="sim-label">Qtd. por Caixa</div>
+        <input class="sim-input" id="mcol-qtd-cx" type="number" min="1" step="1" placeholder="1" value="1">
+      </div>
+      <div class="sim-field" style="grid-column:1/-1">
+        <div class="sim-label">Observação (opcional)</div>
+        <input class="sim-input" id="mcol-obs" placeholder="Validade da cotação, condições, etc.">
+      </div>
     </div>
-    <div class="sim-field">
-      <div class="sim-label">Fornecedor / Observação</div>
-      <input class="sim-input" id="mcol-obs" placeholder="Onde foi encontrado o preço">
-    </div>
-    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:6px">
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
       <button class="btn btn-secondary" onclick="fecharModalColetar()">Cancelar</button>
       <button class="btn btn-primary" onclick="confirmarColeta()" style="background:#1D4ED8">
         ✅ Confirmar Coleta
       </button>
     </div>
+  </div>
+</div>
+
+<!-- Modal: Novo Item (wrapper sobre page-cadastro) -->
+<div id="modal-novo-item" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:flex-start;justify-content:center;padding:24px;overflow-y:auto">
+  <div style="background:var(--card,#fff);border-radius:16px;padding:28px 30px;max-width:940px;width:100%;box-shadow:0 24px 72px rgba(0,0,0,.28);margin:auto">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <h3 style="margin:0;font-size:17px;font-weight:700">＋ Incluir Novo Item</h3>
+      <button onclick="fecharModalNovoItem()" style="background:none;border:none;cursor:pointer;font-size:24px;color:var(--muted);line-height:1" title="Fechar">✕</button>
+    </div>
+    <div id="modal-novo-item-body"></div>
   </div>
 </div>
 
