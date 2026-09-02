@@ -3392,21 +3392,53 @@ function downloadTemplatePrecos() {
 }
 
 // ── MODO 2: Cadastrar Novos Itens (com CMED) ──────────────────────────────────
-let cmedCount = 0; // cache do total de registros CMED
+// CMED é carregada do arquivo estático cmed.json (GitHub Pages) — sem Firestore, sem quota
+let _cmedDB    = null;   // array de registros {e1,e2,e3,p,s,l,a}
+let _cmedLoading = false;
+let cmedCount  = 0;
+
+const CMED_JSON_URL = "https://aliria-saude.github.io/smart-pricing-aliria/cmed.json";
+
+async function _loadCmedJson() {
+  if (_cmedDB !== null) return _cmedDB;
+  if (_cmedLoading) {
+    // Aguarda carregamento em andamento
+    while (_cmedLoading) await new Promise(r => setTimeout(r, 100));
+    return _cmedDB;
+  }
+  _cmedLoading = true;
+  try {
+    const resp = await fetch(CMED_JSON_URL);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    _cmedDB = await resp.json();
+    cmedCount = _cmedDB.length;
+    console.log(`CMED carregada: ${cmedCount.toLocaleString("pt-BR")} registros`);
+  } catch(e) {
+    console.warn("CMED JSON não disponível:", e.message);
+    _cmedDB = [];
+  }
+  _cmedLoading = false;
+  return _cmedDB;
+}
+
+// Normaliza string para comparação (remove acentos, maiúsculas)
+const _normCmed = s => String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toUpperCase().trim();
+
+// Converte registro compacto JSON → formato padrão
+function _expandCmed(r) {
+  return { ean1: r.e1, ean2: r.e2, ean3: r.e3,
+           produto: r.p, substancia: r.s, laboratorio: r.l, apresentacao: r.a };
+}
 
 async function checkCmedStatus() {
-  try {
-    const { count } = await db.from("cmed").select("id", { count:"exact", head:true });
-    cmedCount = count || 0;
-  } catch { cmedCount = 0; }
-
+  const cmed = await _loadCmedJson();
   const warn = document.getElementById("cmed-warn-banner");
   const ok   = document.getElementById("cmed-ok-banner");
   const okTxt= document.getElementById("cmed-ok-text");
-  if (cmedCount > 0) {
+  if (cmed.length > 0) {
     warn.style.display = "none";
     ok.style.display   = "flex";
-    okTxt.textContent  = `✅ CMED carregada — ${cmedCount.toLocaleString("pt-BR")} medicamentos disponíveis`;
+    okTxt.textContent  = `✅ CMED carregada — ${cmed.length.toLocaleString("pt-BR")} medicamentos disponíveis`;
   } else {
     ok.style.display   = "none";
     warn.style.display = "flex";
@@ -3414,19 +3446,15 @@ async function checkCmedStatus() {
 }
 
 async function lookupCmedBatch(eans) {
-  // Consulta CMED buscando por ean1, ean2 ou ean3
+  const cmed  = await _loadCmedJson();
   const clean = [...new Set(eans.filter(Boolean).map(e => String(e).trim()))];
-  if (!clean.length) return {};
-  const { data } = await db.from("cmed")
-    .select("ean1,ean2,ean3,produto,substancia,laboratorio,apresentacao")
-    .or(`ean1.in.(${clean.join(",")}),ean2.in.(${clean.join(",")}),ean3.in.(${clean.join(",")})`);
+  if (!clean.length || !cmed.length) return {};
   const map = {};
-  (data || []).forEach(r => {
-    [r.ean1, r.ean2, r.ean3].filter(Boolean).forEach(e => {
-      const ec = String(e).trim();
-      if (clean.includes(ec)) map[ec] = r;
-    });
-  });
+  for (const r of cmed) {
+    const hits = [r.e1, r.e2, r.e3].filter(e => e && clean.includes(String(e).trim()));
+    hits.forEach(e => { map[String(e).trim()] = _expandCmed(r); });
+    if (Object.keys(map).length === clean.length) break;
+  }
   return map;
 }
 
@@ -3565,17 +3593,13 @@ function downloadTemplateNovos() {
 async function checkCmedDbStatus() {
   const el = document.getElementById("cmed-db-status");
   try {
-    const { count, error } = await db.from("cmed").select("id", { count:"exact", head:true });
-    if (error) {
-      el.innerHTML = `⚠️ Tabela CMED não encontrada no banco — execute o SQL acima para criá-la.`;
-      el.style.color = "#dc2626";
-    } else {
-      const n = count || 0;
-      el.innerHTML = n > 0
-        ? `✅ <strong>${n.toLocaleString("pt-BR")}</strong> medicamentos na CMED. Você pode recarregar com um arquivo atualizado.`
-        : `📭 Tabela CMED existe mas está vazia. Faça o upload do arquivo ANVISA.`;
-      el.style.color = n > 0 ? "#16a34a" : "#ca8a04";
-    }
+    const cmed = await _loadCmedJson();
+    const n = cmed.length;
+    el.innerHTML = n > 0
+      ? `✅ <strong>${n.toLocaleString("pt-BR")}</strong> medicamentos carregados da tabela CMED.`
+      : `📭 Tabela CMED não disponível. Execute o script <code>gerar_cmed_json.py</code> e faça o deploy.`;
+    el.style.color = n > 0 ? "#16a34a" : "#ca8a04";
+    return; // não precisa de try/catch extra
   } catch(e) {
     el.textContent = "❌ Erro ao verificar: " + e.message;
     el.style.color = "#dc2626";
@@ -3785,26 +3809,20 @@ async function buscarPorEan() {
     return;
   }
 
-  // ── 2. Não está no cadastro — busca na CMED ──────────────────────────────────
+  // ── 2. Não está no cadastro — busca na CMED (JSON local) ────────────────────
   cadEanExistente = null;
   input.style.borderColor = "";
   ocultarBannersCad();
 
-  if (!db) return;  // sem conexão
-
-  // Mostra spinner enquanto consulta
+  // Mostra spinner enquanto carrega JSON (primeira vez)
   document.getElementById("cad-buscando").style.display = "flex";
 
   try {
-    const { data: cmedRows } = await db
-      .from("cmed")
-      .select("ean1,ean2,ean3,produto,substancia,laboratorio,apresentacao")
-      .or(`ean1.eq.${ean},ean2.eq.${ean},ean3.eq.${ean}`)
-      .limit(1);
-
+    const cmedArr = await _loadCmedJson();
     document.getElementById("cad-buscando").style.display = "none";
 
-    const cmed = cmedRows && cmedRows.length > 0 ? cmedRows[0] : null;
+    const found = cmedArr.find(r => r.e1 === ean || r.e2 === ean || r.e3 === ean);
+    const cmed  = found ? _expandCmed(found) : null;
 
     if (cmed) {
       // ── CMED encontrado ──
@@ -3840,7 +3858,7 @@ async function buscarPorEan() {
   }
 }
 
-/* Autocomplete CMED por descrição (dispara com 3+ caracteres) */
+/* Autocomplete CMED por descrição (dispara com 3+ caracteres) — usa JSON local */
 let _cmedAcTimer = null;
 async function buscarCmedPorDescricao(val) {
   const ac = document.getElementById("cad-item-ac");
@@ -3849,22 +3867,23 @@ async function buscarCmedPorDescricao(val) {
 
   clearTimeout(_cmedAcTimer);
   _cmedAcTimer = setTimeout(async () => {
-    if (!db) return;
     try {
-      const q = val.normalize("NFD").replace(/[̀-ͯ]/g,"").toUpperCase().trim();
-      // Firestore não suporta ILIKE, mas temos ilike via PostgREST (Supabase adapter)
-      const { data: rows } = await db
-        .from("cmed")
-        .select("ean1,produto,substancia,laboratorio,apresentacao")
-        .ilike("produto", `%${val}%`)
-        .limit(12);
+      const cmedArr = await _loadCmedJson();
+      if (!cmedArr.length) { ac.style.display = "none"; return; }
 
-      if (!rows || rows.length === 0) { ac.style.display = "none"; return; }
+      const q = _normCmed(val);
+      const rows = [];
+      for (const r of cmedArr) {
+        if (_normCmed(r.p).includes(q)) { rows.push(r); if (rows.length >= 12) break; }
+      }
+
+      if (!rows.length) { ac.style.display = "none"; return; }
 
       ac.innerHTML = rows.map(r => {
-        const label = [r.produto, r.apresentacao].filter(Boolean).join(" — ");
-        const sub   = [r.substancia, r.laboratorio].filter(Boolean).join(" | ");
-        return `<div onclick="selecionarCmedDescricao(${JSON.stringify(r).replace(/"/g,'&quot;')})"
+        const label = [r.p, r.a].filter(Boolean).join(" — ");
+        const sub   = [r.s, r.l].filter(Boolean).join(" | ");
+        const enc   = JSON.stringify({e1:r.e1,p:r.p,s:r.s,l:r.l,a:r.a}).replace(/"/g,'&quot;');
+        return `<div onclick="selecionarCmedDescricao(${enc})"
           style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px"
           onmouseover="this.style.background='var(--hover,#f1f5f9)'" onmouseout="this.style.background=''">
           <div style="font-weight:600;color:var(--fg)">${label}</div>
@@ -3880,16 +3899,19 @@ function selecionarCmedDescricao(cmed) {
   const ac = document.getElementById("cad-item-ac");
   if (ac) ac.style.display = "none";
 
-  const apres   = cmed.apresentacao ? cmed.apresentacao.trim() : "";
-  const produto = cmed.produto ? (apres ? `${cmed.produto.trim()} ${apres}` : cmed.produto.trim()) : "";
+  // Suporta tanto chaves curtas {e1,p,s,l,a} quanto expandidas {ean1,produto,...}
+  const apres   = (cmed.a || cmed.apresentacao || "").trim();
+  const nomeProd= (cmed.p || cmed.produto || "").trim();
+  const produto = nomeProd ? (apres ? `${nomeProd} ${apres}` : nomeProd) : "";
 
   document.getElementById("cad-item").value  = produto;
   document.getElementById("cad-apres").value = "";
-  document.getElementById("cad-pa").value    = cmed.substancia  ? cmed.substancia.trim().toLowerCase()  : "";
-  document.getElementById("cad-lab").value   = cmed.laboratorio ? cmed.laboratorio.trim() : "";
+  document.getElementById("cad-pa").value    = (cmed.s || cmed.substancia  || "").trim().toLowerCase();
+  document.getElementById("cad-lab").value   = (cmed.l || cmed.laboratorio || "").trim();
 
   // Preenche EAN se disponível
-  if (cmed.ean1) document.getElementById("cad-ean").value = cmed.ean1;
+  const ean = cmed.e1 || cmed.ean1;
+  if (ean) document.getElementById("cad-ean").value = ean;
 
   document.getElementById("cad-banner-cmed-nome").textContent = produto;
   document.getElementById("cad-banner-cmed").style.display = "flex";
