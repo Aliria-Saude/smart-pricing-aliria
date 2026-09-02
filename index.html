@@ -824,10 +824,6 @@ select.filter-input { min-width: 160px; }
               </label>
             </div>
 
-            <button class="btn btn-primary" onclick="gerarOrcamentoPDF()" style="width:100%;padding:14px;font-size:15px">
-              📄 Gerar Orçamento PDF
-            </button>
-
             <!-- QR code oculto para inclusão no PDF -->
             <div id="orc-qr-hidden" style="display:none"></div>
 
@@ -941,10 +937,6 @@ select.filter-input { min-width: 160px; }
               </table>
             </div>
 
-            <button class="btn btn-primary" onclick="gerarLicitacaoPDF()" style="width:100%;padding:14px;font-size:15px">
-              🏛️ Gerar Orçamento para Licitação PDF
-            </button>
-
             <!-- QR code oculto para inclusão no PDF de licitação -->
             <div id="lic-qr-hidden" style="display:none"></div>
 
@@ -984,6 +976,18 @@ select.filter-input { min-width: 160px; }
               </div>
               <p style="font-size:11px;color:var(--muted);margin:12px 0 0">💾 Salvo automaticamente no navegador.</p>
             </div>
+          </div>
+
+          <!-- Botões de gerar PDF — abaixo dos textos, visível conforme aba ativa -->
+          <div id="orc-btn-paciente" style="margin-top:16px">
+            <button class="btn btn-primary" onclick="gerarOrcamentoPDF()" style="width:100%;padding:14px;font-size:15px">
+              📄 Gerar Orçamento PDF
+            </button>
+          </div>
+          <div id="orc-btn-licitacao" style="margin-top:16px;display:none">
+            <button class="btn btn-primary" onclick="gerarLicitacaoPDF()" style="width:100%;padding:14px;font-size:15px">
+              🏛️ Gerar Orçamento para Licitação PDF
+            </button>
           </div>
 
         </div>
@@ -4630,6 +4634,8 @@ function switchOrcTab(tab) {
   ["paciente","licitacao"].forEach(t => {
     document.getElementById(`orc-panel-${t}`).style.display = t === tab ? "" : "none";
     document.getElementById(`orctab-${t}`).classList.toggle("active", t === tab);
+    const btn = document.getElementById(`orc-btn-${t}`);
+    if (btn) btn.style.display = t === tab ? "" : "none";
   });
   if (tab === "licitacao") initLicPage();
 }
