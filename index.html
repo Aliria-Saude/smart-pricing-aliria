@@ -2616,6 +2616,8 @@ async function restaurarDoBackup() {
 // ── Data ─────────────────────────────────────────────────────────────────────
 async function loadData() {
   if (!db) return;
+  // Pré-carrega CMED em background para o mapa de registros ficar pronto antes de renderizar
+  _loadCmedJson().then(arr => { if (arr.length && !_cmedEanRegMap) _buildEanRegMap(arr); });
   try {
     // Busca todos os registros de uma vez (Firebase não usa paginação por range)
     const { data, error } = await db
@@ -2775,7 +2777,7 @@ function renderPage() {
       <td class="td-produto">${escHtml(r.produto || "—")}</td>
       <td class="td-pa">${escHtml(r.principio_ativo || "—")}</td>
       <td>${escHtml(r.laboratorio || "—")}</td>
-      <td style="font-size:11px;color:var(--muted)">${escHtml(r.registro || "—")}</td>
+      <td style="font-size:11px;color:var(--muted)">${escHtml(r.registro || _cmedRegByEan(r.ean) || "—")}</td>
       <td style="font-size:12px">${escHtml(r.nacionalidade || "—")}</td>
       <td>${trib}</td>
       ${prices}
@@ -3423,6 +3425,7 @@ async function _loadCmedJson() {
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     _cmedDB = await resp.json();
     cmedCount = _cmedDB.length;
+    _buildEanRegMap(_cmedDB);
     console.log(`CMED carregada: ${cmedCount.toLocaleString("pt-BR")} registros`);
   } catch(e) {
     console.warn("CMED JSON não disponível:", e.message);
@@ -3434,6 +3437,22 @@ async function _loadCmedJson() {
 
 // Normaliza string para comparação (remove acentos, maiúsculas)
 const _normCmed = s => String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toUpperCase().trim();
+
+// Mapa EAN→registro construído após carregar o JSON (evita varrer 26k registros a cada render)
+let _cmedEanRegMap = null;
+function _buildEanRegMap(arr) {
+  _cmedEanRegMap = {};
+  for (const r of arr) {
+    if (!r.r) continue;
+    if (r.e1) _cmedEanRegMap[r.e1] = r.r;
+    if (r.e2) _cmedEanRegMap[r.e2] = r.r;
+    if (r.e3) _cmedEanRegMap[r.e3] = r.r;
+  }
+}
+function _cmedRegByEan(ean) {
+  if (!ean || !_cmedEanRegMap) return null;
+  return _cmedEanRegMap[String(ean).trim()] || null;
+}
 
 // Converte registro compacto JSON → formato padrão
 function _expandCmed(r) {
