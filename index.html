@@ -1524,8 +1524,9 @@ firebase.initializeApp(FIREBASE_CONFIG);
 const _fauth = firebase.auth();
 const _fdb   = firebase.firestore();
 
-// Configura persistência offline
-// enablePersistence removido — evita cache permanente de dados sensíveis no IndexedDB do browser
+// Persistência LOCAL: mantém o usuário logado mesmo ao fechar e reabrir o browser
+_fauth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(() => {});
+
 
 class _Auth {
   onAuthStateChange(cb) {
@@ -1692,15 +1693,15 @@ const PAGE_SIZE = 50;
 let _p344EANs  = new Set();
 let _currentUser = null; // usuário autenticado atual
 
-// ── Logout automático por inatividade (15 minutos) ──────────────────────────
+// ── Logout automático por inatividade (8 horas — apenas para segurança mínima) ──
 let _inactivityTimer = null;
-const INACTIVITY_MS = 15 * 60 * 1000; // 15 minutos
+const INACTIVITY_MS = 8 * 60 * 60 * 1000; // 8 horas
 
 function _resetInactivityTimer() {
   clearTimeout(_inactivityTimer);
   _inactivityTimer = setTimeout(async () => {
     if (_currentUser) {
-      toast("Sessão encerrada por inatividade.", "info");
+      toast("Sessão encerrada por inatividade prolongada.", "info");
       await fazerLogout();
     }
   }, INACTIVITY_MS);
