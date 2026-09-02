@@ -740,42 +740,6 @@ select.filter-input { min-width: 160px; }
             <button class="uptab"        id="orctab-licitacao" onclick="switchOrcTab('licitacao')">🏛️ Orçamento para Licitação</button>
           </div>
 
-          <!-- ══ CONFIGURAÇÕES DO PDF (compartilhado entre os dois orçamentos) ══ -->
-          <div class="card" style="margin-bottom:20px;border:1px solid var(--border)">
-            <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="toggleOrcConfig()">
-              <h2 style="font-size:14px;margin:0;display:flex;align-items:center;gap:8px">
-                ⚙️ Textos e dados do PDF
-                <span style="font-size:11px;font-weight:400;color:var(--muted)">(clique para expandir)</span>
-              </h2>
-              <span id="orc-config-chevron" style="font-size:18px;color:var(--muted)">›</span>
-            </div>
-            <div id="orc-config-body" style="display:none;margin-top:18px">
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-                <div class="sim-field">
-                  <div class="sim-label">Dados Bancários</div>
-                  <input class="sim-input" id="ocfg-banco" placeholder="Banco Itaú (341) — Ag. 0289 — C/C 98878-4" oninput="salvarOrcConfig()">
-                </div>
-                <div class="sim-field">
-                  <div class="sim-label">Entrega</div>
-                  <input class="sim-input" id="ocfg-entrega" placeholder="Entrega de 1 até 7 dias úteis após confirmação do pagamento." oninput="salvarOrcConfig()">
-                </div>
-                <div class="sim-field">
-                  <div class="sim-label">Frete</div>
-                  <input class="sim-input" id="ocfg-frete" placeholder="Frete incluso" oninput="salvarOrcConfig()">
-                </div>
-                <div class="sim-field">
-                  <div class="sim-label">Cidade (data no PDF)</div>
-                  <input class="sim-input" id="ocfg-cidade" placeholder="Florianópolis" oninput="salvarOrcConfig()">
-                </div>
-                <div class="sim-field" style="grid-column:1/-1">
-                  <div class="sim-label">Observações adicionais (linha extra no PDF)</div>
-                  <textarea class="sim-input" id="ocfg-obs" rows="2" placeholder="Ex.: Pagamento somente via PIX ou boleto." style="resize:vertical" oninput="salvarOrcConfig()"></textarea>
-                </div>
-              </div>
-              <p style="font-size:11px;color:var(--muted);margin:12px 0 0">💾 Salvo automaticamente no navegador.</p>
-            </div>
-          </div>
-
           <!-- ══ PAINEL: ORÇAMENTO PACIENTE ══ -->
           <div id="orc-panel-paciente">
 
@@ -985,6 +949,42 @@ select.filter-input { min-width: 160px; }
             <div id="lic-qr-hidden" style="display:none"></div>
 
           </div><!-- /orc-panel-licitacao -->
+
+          <!-- ══ CONFIGURAÇÕES DO PDF ══ -->
+          <div class="card" style="margin-top:20px;border:1px solid var(--border)">
+            <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="toggleOrcConfig()">
+              <h2 style="font-size:14px;margin:0;display:flex;align-items:center;gap:8px">
+                ⚙️ Textos do PDF
+                <span style="font-size:11px;font-weight:400;color:var(--muted)">(clique para expandir / recolher)</span>
+              </h2>
+              <span id="orc-config-chevron" style="font-size:18px;color:var(--muted)">›</span>
+            </div>
+            <div id="orc-config-body" style="display:none;margin-top:18px">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+                <div class="sim-field">
+                  <div class="sim-label">Dados Bancários</div>
+                  <input class="sim-input" id="ocfg-banco" placeholder="Banco Itaú (341) — Ag. 0289 — C/C 98878-4" oninput="salvarOrcConfig()">
+                </div>
+                <div class="sim-field">
+                  <div class="sim-label">Entrega</div>
+                  <input class="sim-input" id="ocfg-entrega" placeholder="Entrega de 1 até 7 dias úteis após confirmação do pagamento." oninput="salvarOrcConfig()">
+                </div>
+                <div class="sim-field">
+                  <div class="sim-label">Frete</div>
+                  <input class="sim-input" id="ocfg-frete" placeholder="Frete incluso" oninput="salvarOrcConfig()">
+                </div>
+                <div class="sim-field">
+                  <div class="sim-label">Cidade (data no PDF)</div>
+                  <input class="sim-input" id="ocfg-cidade" placeholder="Florianópolis" oninput="salvarOrcConfig()">
+                </div>
+                <div class="sim-field" style="grid-column:1/-1">
+                  <div class="sim-label">Observações adicionais</div>
+                  <textarea class="sim-input" id="ocfg-obs" rows="2" placeholder="Ex.: Pagamento somente via PIX ou boleto." style="resize:vertical" oninput="salvarOrcConfig()"></textarea>
+                </div>
+              </div>
+              <p style="font-size:11px;color:var(--muted);margin:12px 0 0">💾 Salvo automaticamente no navegador.</p>
+            </div>
+          </div>
 
         </div>
       </div>
@@ -4599,14 +4599,25 @@ function salvarOrcConfig() {
   } catch(e) {}
 }
 
+// Valores padrão para orçamento de paciente (licitação fica em branco)
+const ORC_CFG_DEFAULTS = {
+  banco:   "Banco Itaú (Cód. 341) - Agência 0289 - C/C: 98878-4",
+  entrega: "Entrega de 1 até 7 dias úteis após confirmação do pagamento.",
+  frete:   "Frete incluso",
+  cidade:  "Florianópolis",
+  obs:     "",
+};
+
 function carregarOrcConfig() {
   try {
-    const cfg = JSON.parse(localStorage.getItem(ORC_CFG_KEY) || "{}");
-    if (cfg.banco)   document.getElementById("ocfg-banco").value   = cfg.banco;
-    if (cfg.entrega) document.getElementById("ocfg-entrega").value = cfg.entrega;
-    if (cfg.frete)   document.getElementById("ocfg-frete").value   = cfg.frete;
-    if (cfg.cidade)  document.getElementById("ocfg-cidade").value  = cfg.cidade;
-    if (cfg.obs)     document.getElementById("ocfg-obs").value     = cfg.obs;
+    const raw = localStorage.getItem(ORC_CFG_KEY);
+    // Se nunca salvou, pré-preenche com os padrões
+    const cfg = raw ? JSON.parse(raw) : { ...ORC_CFG_DEFAULTS };
+    document.getElementById("ocfg-banco").value   = cfg.banco   ?? ORC_CFG_DEFAULTS.banco;
+    document.getElementById("ocfg-entrega").value = cfg.entrega ?? ORC_CFG_DEFAULTS.entrega;
+    document.getElementById("ocfg-frete").value   = cfg.frete   ?? ORC_CFG_DEFAULTS.frete;
+    document.getElementById("ocfg-cidade").value  = cfg.cidade  ?? ORC_CFG_DEFAULTS.cidade;
+    document.getElementById("ocfg-obs").value     = cfg.obs     ?? "";
   } catch(e) {}
 }
 
