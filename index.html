@@ -2616,8 +2616,13 @@ async function restaurarDoBackup() {
 // ── Data ─────────────────────────────────────────────────────────────────────
 async function loadData() {
   if (!db) return;
-  // Pré-carrega CMED em background para o mapa de registros ficar pronto antes de renderizar
-  _loadCmedJson().then(arr => { if (arr.length && !_cmedEanRegMap) _buildEanRegMap(arr); });
+  // Pré-carrega CMED; re-renderiza tabela quando o JSON chegar (pode ser depois do primeiro render)
+  _loadCmedJson().then(arr => {
+    if (arr.length && !_cmedEanRegMap) {
+      _buildEanRegMap(arr);
+      if (allData.length) renderTable(); // atualiza coluna Registro ANVISA
+    }
+  });
   try {
     // Busca todos os registros de uma vez (Firebase não usa paginação por range)
     const { data, error } = await db
