@@ -3983,11 +3983,14 @@ function renderOrcRows() {
   for (let i = 1; i <= 7; i++) {
     const bg = i % 2 === 0 ? "background:rgba(0,0,0,.02)" : "";
     html += `<tr style="${bg}">
-      <td style="padding:5px 6px;text-align:center;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">${i}</td>
+      <td style="padding:5px 6px;text-align:center;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border);vertical-align:top;padding-top:10px">${i}</td>
       <td style="padding:5px 8px;border-bottom:1px solid var(--border)">
-        <select class="sim-input sim-select" id="orc-prod-${i}" onchange="onOrcProdChange(${i})" style="margin:0;width:100%">
+        <select class="sim-input sim-select" id="orc-prod-${i}" onchange="onOrcProdChange(${i})" style="margin:0;width:100%;margin-bottom:4px">
           <option value="">— ${i===1?"Selecione o medicamento":"(opcional)"} —</option>
         </select>
+        <input class="sim-input" id="orc-desc-${i}" placeholder="Descrição personalizada (opcional)"
+          style="margin:0;width:100%;font-size:11px;padding:4px 8px;color:var(--text);border-color:var(--border)"
+          title="Edite livremente a descrição que aparecerá no PDF">
       </td>
       <td style="padding:5px 8px;border-bottom:1px solid var(--border)">
         <input class="sim-input" type="number" id="orc-vuni-${i}" placeholder="0,00" min="0" step="0.01"
@@ -4062,6 +4065,9 @@ function onOrcProdChange(n) {
   const sel = document.getElementById(`orc-prod-${n}`);
   if (!sel?.value) { calcOrcTotal(); return; }
   const item = allData.find(r => String(r.id) === sel.value);
+  // Pré-preenche descrição com nome do produto (apenas se campo estiver vazio)
+  const descEl = document.getElementById(`orc-desc-${n}`);
+  if (descEl && !descEl.value && item?.produto) descEl.value = item.produto;
   if (item?.menor_preco) {
     const vuni = document.getElementById(`orc-vuni-${n}`);
     if (vuni && !vuni.value) vuni.value = item.menor_preco;
@@ -4161,13 +4167,21 @@ function fmtPorUnid(preco, nomeProduto) {
 function _coletarItensOrc(prefix, n, { incluirSubstancia = false } = {}) {
   const itens = [];
   for (let i = 1; i <= n; i++) {
-    const sel  = document.getElementById(`${prefix}-prod-${i}`);
-    const vuni = parseFloat(document.getElementById(`${prefix}-vuni-${i}`)?.value) || 0;
-    const qtd  = Math.max(1, parseInt(document.getElementById(`${prefix}-qtd-${i}`)?.value) || 1);
-    if (sel?.value && vuni > 0) {
-      const item = allData.find(r => String(r.id) === sel.value);
-      let medName = item?.produto || sel.options[sel.selectedIndex]?.text || "";
-      if (item?.laboratorio) medName += " - " + item.laboratorio;
+    const sel   = document.getElementById(`${prefix}-prod-${i}`);
+    const vuni  = parseFloat(document.getElementById(`${prefix}-vuni-${i}`)?.value) || 0;
+    const qtd   = Math.max(1, parseInt(document.getElementById(`${prefix}-qtd-${i}`)?.value) || 1);
+    const descInput = document.getElementById(`${prefix}-desc-${i}`);
+    // Aceita linha sem produto selecionado se tiver descrição manual + valor
+    const temDesc  = descInput?.value?.trim();
+    const temProd  = sel?.value;
+    if ((temProd || temDesc) && vuni > 0) {
+      const item = temProd ? allData.find(r => String(r.id) === sel.value) : null;
+      // Descrição: personalizada tem prioridade; senão usa nome do produto + laboratório
+      let medName = temDesc || "";
+      if (!medName) {
+        medName = item?.produto || sel?.options[sel?.selectedIndex]?.text || "";
+        if (item?.laboratorio) medName += " - " + item.laboratorio;
+      }
       if (incluirSubstancia && item?.principio_ativo) {
         medName += " (" + item.principio_ativo.toUpperCase() + ")";
       }
@@ -4535,11 +4549,14 @@ function renderLicRows(n) {
     const bg = i % 2 === 0 ? "background:rgba(0,0,0,.02)" : "";
     html += `<tr style="${bg}">
       <td style="padding:5px 6px;text-align:center;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border);vertical-align:middle">${i}</td>
-      <td style="padding:5px 8px;border-bottom:1px solid var(--border);vertical-align:top;min-width:0;max-width:260px">
+      <td style="padding:5px 8px;border-bottom:1px solid var(--border);vertical-align:top;min-width:0;max-width:280px">
         <select class="sim-input sim-select" id="lic-prod-${i}" onchange="onLicProdChange(${i})"
-                style="margin:0;width:100%;max-width:100%;font-size:11px">
+                style="margin:0;width:100%;max-width:100%;font-size:11px;margin-bottom:4px">
           <option value="">— ${i===1?"Digite molécula ou nome...":"(opcional)"} —</option>
         </select>
+        <input class="sim-input" id="lic-desc-${i}" placeholder="Descrição personalizada (opcional)"
+          style="margin:0;width:100%;font-size:11px;padding:4px 8px;color:var(--text);border-color:var(--border)"
+          title="Edite livremente a descrição que aparecerá no PDF">
         <div id="lic-sub-${i}" style="font-size:10px;color:var(--muted);margin-top:2px;padding-left:2px;font-style:italic;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
       </td>
       <td style="padding:5px 8px;border-bottom:1px solid var(--border);text-align:right;font-size:11px;color:var(--muted);white-space:nowrap;line-height:1.6;vertical-align:middle" id="lic-puni-${i}">—</td>
@@ -4659,6 +4676,9 @@ function onLicProdChange(n) {
     }
   }
   if (subEl) subEl.textContent = item?.principio_ativo ? item.principio_ativo.toUpperCase() : "";
+  // Pré-preenche descrição com nome do produto (apenas se campo estiver vazio)
+  const descEl = document.getElementById(`lic-desc-${n}`);
+  if (descEl && !descEl.value && item?.produto) descEl.value = item.produto;
   calcLicTotal();
 }
 
