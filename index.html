@@ -575,6 +575,7 @@ select.filter-input { min-width: 160px; }
                   <th>Produto</th>
                   <th>Princípio Ativo</th>
                   <th>Laboratório</th>
+                  <th>Registro ANVISA</th>
                   <th>Nacion.</th>
                   <th>Tributação</th>
                   <th>INTEGRALMED</th><th>VIVEO</th><th>CIAMED</th>
@@ -2774,6 +2775,7 @@ function renderPage() {
       <td class="td-produto">${escHtml(r.produto || "—")}</td>
       <td class="td-pa">${escHtml(r.principio_ativo || "—")}</td>
       <td>${escHtml(r.laboratorio || "—")}</td>
+      <td style="font-size:11px;color:var(--muted)">${escHtml(r.registro || "—")}</td>
       <td style="font-size:12px">${escHtml(r.nacionalidade || "—")}</td>
       <td>${trib}</td>
       ${prices}
