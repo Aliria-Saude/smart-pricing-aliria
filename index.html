@@ -1107,15 +1107,15 @@ select.filter-input { min-width: 160px; }
                 style="margin-left:auto;background:none;border:none;cursor:pointer;font-size:18px;color:#15803d;line-height:1">✕</button>
             </div>
 
-            <!-- Banner: encontrado na CMED (azul) -->
-            <div id="cad-banner-cmed" style="display:none;align-items:center;gap:10px;background:#eff6ff;border:1px solid #93c5fd;border-radius:8px;padding:10px 14px;margin-bottom:10px">
-              <span style="font-size:18px">🔍</span>
+            <!-- Banner: encontrado na CMED (vermelho) -->
+            <div id="cad-banner-cmed" style="display:none;align-items:center;gap:10px;background:#fff1f2;border:1px solid #fca5a5;border-radius:8px;padding:10px 14px;margin-bottom:10px">
+              <span style="font-size:18px">📋</span>
               <div>
-                <div style="font-size:13px;font-weight:600;color:#1d4ed8" id="cad-banner-cmed-nome"></div>
-                <div style="font-size:12px;color:#1e40af">Produto encontrado na CMED — Produto, Princípio Ativo e Laboratório preenchidos. Complete <strong>Nacionalidade</strong>, <strong>Tributação</strong> e os <strong>Preços</strong>.</div>
+                <div style="font-size:13px;font-weight:600;color:#b91c1c" id="cad-banner-cmed-nome"></div>
+                <div style="font-size:12px;color:#991b1b">Produto encontrado na CMED — Produto, Princípio Ativo e Laboratório preenchidos. Complete <strong>Nacionalidade</strong>, <strong>Tributação</strong> e os <strong>Preços</strong>.</div>
               </div>
               <button onclick="limparCadastro()" title="Limpar formulário"
-                style="margin-left:auto;background:none;border:none;cursor:pointer;font-size:18px;color:#1d4ed8;line-height:1">✕</button>
+                style="margin-left:auto;background:none;border:none;cursor:pointer;font-size:18px;color:#b91c1c;line-height:1">✕</button>
             </div>
 
             <!-- Spinner de busca na CMED -->
@@ -1123,9 +1123,12 @@ select.filter-input { min-width: 160px; }
               <span style="animation:spin 1s linear infinite;display:inline-block">⏳</span> Buscando na CMED...
             </div>
 
-            <div class="sim-field">
+            <div class="sim-field" style="position:relative">
               <div class="sim-label">Item</div>
-              <input class="sim-input" type="text" id="cad-item" placeholder="Nome do medicamento">
+              <input class="sim-input" type="text" id="cad-item" placeholder="Nome do medicamento (ou busque digitando 3+ letras)"
+                oninput="buscarCmedPorDescricao(this.value)" autocomplete="off">
+              <!-- Dropdown de autocomplete CMED por descrição -->
+              <div id="cad-item-ac" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:999;background:var(--card);border:1px solid var(--border);border-radius:6px;max-height:220px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,.12)"></div>
             </div>
             <div class="sim-field">
               <div class="sim-label">Apresentação</div>
@@ -3593,9 +3596,9 @@ async function onFileSelectCmed(file) {
     set(15, "Parseando (pode levar alguns segundos para ~25 mil linhas)...");
     const json = XLSX.utils.sheet_to_json(ws, { header:1, raw:false });
 
-    // Linha de cabeçalho (normalmente linha 1)
+    // Linha de cabeçalho — a tabela CMED da ANVISA tem ~52 linhas de preâmbulo antes do cabeçalho
     let hIdx = 0;
-    for (let i = 0; i < Math.min(5, json.length); i++) {
+    for (let i = 0; i < Math.min(60, json.length); i++) {
       if (json[i] && json[i].some(c => /EAN/i.test(String(c||"")))) { hIdx = i; break; }
     }
     const norm3 = s => String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toUpperCase().trim();
@@ -3836,6 +3839,69 @@ async function buscarPorEan() {
     console.warn("Erro ao consultar CMED:", e.message);
   }
 }
+
+/* Autocomplete CMED por descrição (dispara com 3+ caracteres) */
+let _cmedAcTimer = null;
+async function buscarCmedPorDescricao(val) {
+  const ac = document.getElementById("cad-item-ac");
+  if (!ac) return;
+  if (!val || val.length < 3) { ac.style.display = "none"; return; }
+
+  clearTimeout(_cmedAcTimer);
+  _cmedAcTimer = setTimeout(async () => {
+    if (!db) return;
+    try {
+      const q = val.normalize("NFD").replace(/[̀-ͯ]/g,"").toUpperCase().trim();
+      // Firestore não suporta ILIKE, mas temos ilike via PostgREST (Supabase adapter)
+      const { data: rows } = await db
+        .from("cmed")
+        .select("ean1,produto,substancia,laboratorio,apresentacao")
+        .ilike("produto", `%${val}%`)
+        .limit(12);
+
+      if (!rows || rows.length === 0) { ac.style.display = "none"; return; }
+
+      ac.innerHTML = rows.map(r => {
+        const label = [r.produto, r.apresentacao].filter(Boolean).join(" — ");
+        const sub   = [r.substancia, r.laboratorio].filter(Boolean).join(" | ");
+        return `<div onclick="selecionarCmedDescricao(${JSON.stringify(r).replace(/"/g,'&quot;')})"
+          style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px"
+          onmouseover="this.style.background='var(--hover,#f1f5f9)'" onmouseout="this.style.background=''">
+          <div style="font-weight:600;color:var(--fg)">${label}</div>
+          <div style="font-size:11px;color:var(--muted)">${sub}</div>
+        </div>`;
+      }).join("");
+      ac.style.display = "block";
+    } catch(e) { console.warn("CMED desc search:", e.message); }
+  }, 300);
+}
+
+function selecionarCmedDescricao(cmed) {
+  const ac = document.getElementById("cad-item-ac");
+  if (ac) ac.style.display = "none";
+
+  const apres   = cmed.apresentacao ? cmed.apresentacao.trim() : "";
+  const produto = cmed.produto ? (apres ? `${cmed.produto.trim()} ${apres}` : cmed.produto.trim()) : "";
+
+  document.getElementById("cad-item").value  = produto;
+  document.getElementById("cad-apres").value = "";
+  document.getElementById("cad-pa").value    = cmed.substancia  ? cmed.substancia.trim().toLowerCase()  : "";
+  document.getElementById("cad-lab").value   = cmed.laboratorio ? cmed.laboratorio.trim() : "";
+
+  // Preenche EAN se disponível
+  if (cmed.ean1) document.getElementById("cad-ean").value = cmed.ean1;
+
+  document.getElementById("cad-banner-cmed-nome").textContent = produto;
+  document.getElementById("cad-banner-cmed").style.display = "flex";
+  document.getElementById("cad-btn-salvar").innerHTML = "＋ Salvar Item";
+  document.getElementById("cad-nac").focus();
+}
+
+// Fecha dropdown ao clicar fora
+document.addEventListener("click", function(e) {
+  const ac = document.getElementById("cad-item-ac");
+  if (ac && !ac.contains(e.target) && e.target.id !== "cad-item") ac.style.display = "none";
+});
 
 /* Limpa o formulário e volta ao modo novo cadastro */
 // ── Fornecedor grid helpers ────────────────────────────────────────────────────
