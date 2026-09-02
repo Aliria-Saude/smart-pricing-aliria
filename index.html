@@ -1123,12 +1123,18 @@ select.filter-input { min-width: 160px; }
               <span style="animation:spin 1s linear infinite;display:inline-block">⏳</span> Buscando na CMED...
             </div>
 
-            <div class="sim-field" style="position:relative">
-              <div class="sim-label">Item</div>
-              <input class="sim-input" type="text" id="cad-item" placeholder="Nome do medicamento (ou busque digitando 3+ letras)"
-                oninput="buscarCmedPorDescricao(this.value)" autocomplete="off">
-              <!-- Dropdown de autocomplete CMED por descrição -->
-              <div id="cad-item-ac" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:999;background:var(--card);border:1px solid var(--border);border-radius:6px;max-height:220px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,.12)"></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+              <div class="sim-field" style="position:relative">
+                <div class="sim-label">Item</div>
+                <input class="sim-input" type="text" id="cad-item" placeholder="Nome do medicamento (ou busque digitando 3+ letras)"
+                  oninput="buscarCmedPorDescricao(this.value)" autocomplete="off">
+                <!-- Dropdown de autocomplete CMED por descrição -->
+                <div id="cad-item-ac" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:999;background:var(--card);border:1px solid var(--border);border-radius:6px;max-height:220px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,.12)"></div>
+              </div>
+              <div class="sim-field">
+                <div class="sim-label">Registro ANVISA</div>
+                <input class="sim-input" type="text" id="cad-registro" placeholder="Preenchido automaticamente pela CMED">
+              </div>
             </div>
             <div class="sim-field">
               <div class="sim-label">Apresentação</div>
@@ -1717,40 +1723,42 @@ function _startInactivityWatch() {
 async function init() {
   db = _dbAdapter;
 
-  // Escuta mudanças de sessão (login / logout / refresh)
-  db.auth.onAuthStateChange(async (event, session) => {
-    if (session?.user) {
-      _currentUser = session.user;
-      _atualizarUIUsuario(session.user);
+  let _appInited = false;
+
+  // onAuthStateChanged é o único lugar confiável para detectar sessão —
+  // o Firebase restaura a sessão LOCAL de forma assíncrona; esperar por ela
+  // aqui garante que nunca mostramos a tela de login por engano.
+  _fauth.onAuthStateChanged(async (user) => {
+    if (user) {
+      _currentUser = user;
+      _atualizarUIUsuario(user);
       document.getElementById("login-screen").style.display = "none";
       document.querySelector(".layout").style.display = "flex";
-      if (event === "SIGNED_IN") {
-        const isPrimeiro = await _verificarPrimeiroAcesso(session.user);
-        if (isPrimeiro) return; // modal de reset bloqueia o app
-        registrarAuditoria("login", {});
-        _startInactivityWatch();
+
+      if (!_appInited) {
+        _appInited = true;
+        const isPrimeiro = await _verificarPrimeiroAcesso(user);
+        if (!isPrimeiro) {
+          registrarAuditoria("login", {});
+          _startInactivityWatch();
+          await _initApp();
+        }
       }
     } else {
+      // Só mostra login após o Firebase confirmar que não há sessão
       _currentUser = null;
       document.getElementById("login-screen").style.display = "flex";
       document.querySelector(".layout").style.display = "none";
     }
   });
 
-  // Verifica sessão já existente
-  const { data: { session } } = await db.auth.getSession();
-  if (!session) {
-    document.getElementById("login-screen").style.display = "flex";
-    document.querySelector(".layout").style.display = "none";
-    return;
-  }
-
-  // Sessão ativa: mostra app imediatamente
-  _currentUser = session.user;
-  _atualizarUIUsuario(session.user);
-  document.getElementById("login-screen").style.display = "none";
-  document.querySelector(".layout").style.display = "flex";
-  await _initApp();
+  // Registra também no adaptador (para compatibilidade com fazerLogin)
+  db.auth.onAuthStateChange(async (event, session) => {
+    if (event === "SIGNED_IN" && session?.user && _appInited) {
+      // login manual pós-init: inicia inatividade se ainda não iniciou
+      _startInactivityWatch();
+    }
+  });
 }
 
 async function _initApp() {
@@ -3783,12 +3791,13 @@ async function buscarPorEan() {
     input.style.borderColor = "#16a34a";
 
     const prod = found.produto || "";
-    document.getElementById("cad-item").value  = prod;
-    document.getElementById("cad-apres").value = "";
-    document.getElementById("cad-pa").value    = found.principio_ativo || "";
-    document.getElementById("cad-lab").value   = found.laboratorio     || "";
-    document.getElementById("cad-nac").value   = found.nacionalidade   || "";
-    document.getElementById("cad-trib").value  = found.tributacao      || "";
+    document.getElementById("cad-item").value     = prod;
+    document.getElementById("cad-apres").value    = "";
+    document.getElementById("cad-pa").value       = found.principio_ativo || "";
+    document.getElementById("cad-lab").value      = found.laboratorio     || "";
+    document.getElementById("cad-registro").value = found.registro        || "";
+    document.getElementById("cad-nac").value      = found.nacionalidade   || "";
+    document.getElementById("cad-trib").value     = found.tributacao      || "";
 
     const indObj = found.indisponivel || {};
     DIST_KEYS_CAD.forEach(k => {
@@ -3834,10 +3843,11 @@ async function buscarPorEan() {
         ? (apres ? `${cmed.produto.trim()} ${apres}` : cmed.produto.trim())
         : "";
 
-      document.getElementById("cad-item").value  = produto;
-      document.getElementById("cad-apres").value = "";
-      document.getElementById("cad-pa").value    = cmed.substancia  ? cmed.substancia.trim().toLowerCase()  : "";
-      document.getElementById("cad-lab").value   = cmed.laboratorio ? cmed.laboratorio.trim() : "";
+      document.getElementById("cad-item").value     = produto;
+      document.getElementById("cad-apres").value    = "";
+      document.getElementById("cad-pa").value       = cmed.substancia  ? cmed.substancia.trim().toLowerCase()  : "";
+      document.getElementById("cad-lab").value      = cmed.laboratorio ? cmed.laboratorio.trim() : "";
+      document.getElementById("cad-registro").value = cmed.registro    ? cmed.registro.trim()    : "";
       // Nacionalidade, tributação e preços ficam em branco para o usuário preencher
       document.getElementById("cad-nac").value   = "";
       document.getElementById("cad-trib").value  = "";
@@ -3905,10 +3915,11 @@ function selecionarCmedDescricao(cmed) {
   const nomeProd= (cmed.p || cmed.produto || "").trim();
   const produto = nomeProd ? (apres ? `${nomeProd} ${apres}` : nomeProd) : "";
 
-  document.getElementById("cad-item").value  = produto;
-  document.getElementById("cad-apres").value = "";
-  document.getElementById("cad-pa").value    = (cmed.s || cmed.substancia  || "").trim().toLowerCase();
-  document.getElementById("cad-lab").value   = (cmed.l || cmed.laboratorio || "").trim();
+  document.getElementById("cad-item").value     = produto;
+  document.getElementById("cad-apres").value    = "";
+  document.getElementById("cad-pa").value       = (cmed.s || cmed.substancia  || "").trim().toLowerCase();
+  document.getElementById("cad-lab").value      = (cmed.l || cmed.laboratorio || "").trim();
+  document.getElementById("cad-registro").value = (cmed.r || cmed.registro    || "").trim();
 
   // Preenche EAN se disponível
   const ean = cmed.e1 || cmed.ean1;
@@ -4009,7 +4020,7 @@ function limparCadastro() {
   ocultarBannersCad();
   document.getElementById("cad-ean").style.borderColor = "";
   document.getElementById("cad-btn-salvar").innerHTML  = "＋ Salvar Item";
-  ["cad-ean","cad-item","cad-apres","cad-pa","cad-lab"]
+  ["cad-ean","cad-item","cad-apres","cad-pa","cad-lab","cad-registro"]
     .forEach(id => document.getElementById(id).value = "");
   document.getElementById("cad-nac").value  = "";
   document.getElementById("cad-trib").value = "";
@@ -4058,6 +4069,7 @@ async function salvarCadastro() {
     produto,
     principio_ativo: pa || null,
     laboratorio:  document.getElementById("cad-lab").value.trim() || null,
+    registro:     document.getElementById("cad-registro").value.trim() || null,
     nacionalidade:document.getElementById("cad-nac").value || null,
     tributacao:   document.getElementById("cad-trib").value || null,
     ...prices,
