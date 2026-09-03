@@ -2617,12 +2617,10 @@ async function restaurarDoBackup() {
 async function loadData() {
   if (!db) return;
   try {
-    // Carrega dados do Firestore e CMED em paralelo — tabela só renderiza com ambos prontos
-    const [{ data, error }, cmedArr] = await Promise.all([
-      db.from("precos_compra").select("*").order("produto", { ascending: true }),
-      _loadCmedJson()
-    ]);
-    if (!_cmedEanRegMap && cmedArr.length) _buildEanRegMap(cmedArr);
+    // Dados do Firestore primeiro — CMED em paralelo mas sem bloquear se falhar
+    const firestorePromise = db.from("precos_compra").select("*").order("produto", { ascending: true });
+    _loadCmedJson().then(arr => { if (arr.length && !_cmedEanRegMap) { _buildEanRegMap(arr); if (allData.length) renderTable(); } }).catch(() => {});
+    const { data, error } = await firestorePromise;
     if (error) throw error;
 
     allData = data || [];
@@ -4116,11 +4114,12 @@ async function salvarCadastro() {
 
   // ── Modo NOVO CADASTRO ──
   if (ean) record.ean = ean;
-  const { error, data: inserted } = await db.from("precos_compra").insert(record).select().single();
+  // Nota: .insert().select().single() quebra no adapter Firebase — usar só .insert()
+  const { error } = await db.from("precos_compra").insert(record);
   if (error) { toast("Erro ao salvar: " + error.message, "error"); return; }
 
   registrarAuditoria("produto_novo", {
-    produto_id:   inserted?.id || null,
+    produto_id:   null,
     produto_nome: produto,
     campo:        "Cadastro manual",
     valor_depois: `EAN: ${ean || "—"}`,
